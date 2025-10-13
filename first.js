@@ -322,8 +322,8 @@ function enterGesture(){
   c.addEventListener('touchmove', gestureMove, {passive:false});
   c.addEventListener('touchend', gestureUp);
 
-  $('ges-clear').addEventListener('click', clearGestureAll);
-  $('ges-save').addEventListener('click', saveGesture);
+  // $('ges-clear').addEventListener('click', clearGestureAll);
+  // $('ges-save').addEventListener('click', saveGesture);
 
   startIMU(`GES${gesAttempt}`);
 }
@@ -411,6 +411,7 @@ function gestureUp(event){
 
   if (points.length > 10){
     strokes = [ points.slice() ];
+    saveGesture();
   } else {
     clearGestureAll();
   }
