@@ -1,85 +1,51 @@
-/* base */
-html, body {
-  background-color: white;
-  overscroll-behavior-y: contain;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  height: 100%;
-  width: 100%;
-  position: fixed;
-}
-.screen {
-  background: white; color: black;
-  width: 100%; height: 100%;
-  position: absolute; inset: 0;
-  font-size: 18px; text-align: center;
-  font-family: Helvetica, Arial, sans-serif;
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  margin: auto;
-}
-.text { width: 80%; margin: auto; font-size: 16px; margin-top: 4vh; }
-.textLarge { width: 80%; margin: auto; font-size: 28px; margin-top: 3vh; }
-
-#head { margin-top: 3vh; font-weight: bold; line-height: 1.4; font-size: 20px; }
-#body { margin-top: 1vh; }
-
-.card { margin: 1vh auto; width: 92%; max-width: 560px; }
-.hidden { display: none; }
-
-.row { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 8px 0; }
-.primary { background: #1a73e8; color: white; border: 1px solid #1a73e8; border-radius: 10px; padding: 10px 16px; }
-.progress { color: #444; }
-.target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; }
-.instructions { color: #333; font-size: 14px; margin: 6px auto; }
-.feedback { min-height: 22px; margin-top: 6px; }
-.feedback.ok { color: #1a7f37; }
-.feedback.err { color: #d93025; }
-.feedback.warn { color: #d28300; }
-
-/* shared centered square */
+/* ==== shared square: smaller & truly responsive ==== */
 .stage-box {
-  width: min(92vw, 360px);
-  aspect-ratio: 1 / 1;        /* perfect square */
-  /* push the box lower for thumbs */
-  margin: clamp(10vh, 20vh, 26vh) auto 16px;
+  /* width scales with viewport, but capped */
+  width: clamp(240px, 80vw, 340px);
+  aspect-ratio: 1 / 1;                  /* perfect square */
+  /* lower for thumb reach */
+  margin: clamp(8vh, 18vh, 24vh) auto 16px;
   display: grid;
   place-items: center;
 }
 
-/* PIN in the box (square grid cells + circular buttons) */
+/* add bottom safe-area space (iOS) */
+.screen { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
+
+/* ==== PIN keypad (responsive) ==== */
 .PIN_pad {
   width: 100%;
-  /* auto height so buttons can size by width via aspect-ratio */
-  height: auto;
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  /* rows auto-size; buttons themselves keep square shape */
-  grid-auto-rows: auto;
-  gap: min(4vw, 18px);
+  grid-auto-rows: 1fr;
+  gap: clamp(8px, 3vw, 16px);
 }
 
 .PIN_button {
   width: 100%;
-  /* this enforces square cells irrespective of grid row height */
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;          /* true circle */
-  border: none;
+  aspect-ratio: 1 / 1;     /* square → circle */
+  border-radius: 50%;
+  border: 0;
   background: #e0e0e0;
-  font-size: 1.7rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: clamp(18px, 6.5vw, 26px);
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
 }
 .PIN_button:active { background: #bdbdbd; }
-.zero { grid-column: 2; }      /* center the 0 */
+.zero { grid-column: 2; }
 
-/* Pattern fills the box 1:1 */
+/* ==== Pattern grid (responsive & visible) ==== */
 .pattern {
   position: relative;
-  width: 100%;
-  height: 100%;
-  background: #fafafa;
+  width: 100%; height: 100%;
+  /* subtle 3×3 guides so the grid is always visible */
+  background:
+    linear-gradient(#ddd 0 0) 0 33.33% / 100% 1px no-repeat,
+    linear-gradient(#ddd 0 0) 0 66.66% / 100% 1px no-repeat,
+    linear-gradient(90deg, #ddd 0 0) 33.33% 0 / 1px 100% no-repeat,
+    linear-gradient(90deg, #ddd 0 0) 66.66% 0 / 1px 100% no-repeat,
+    #fafafa;
   border: 1px solid #ddd;
   border-radius: 12px;
   display: grid;
@@ -87,21 +53,32 @@ html, body {
   grid-template-rows: repeat(3, 1fr);
   touch-action: none;
 }
-#pattern-canvas {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-  z-index: 2; touch-action: none;
+
+/* the dots (above canvas) */
+.pnode { position: relative; z-index: 3; }
+.pnode::after {
+  content: "";
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: clamp(10px, 4.5vw, 16px);
+  height: clamp(10px, 4.5vw, 16px);
+  background: #6fa3ff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.06);
 }
 
-/* Gesture fills the box 1:1 */
-.gesture-canvas {
-  width: 100%;
-  height: 100%;
-  background: #fafafa;
-  border: 1px solid #ddd;
-  border-radius: 12px;
-  display: block;
-  touch-action: none;
+/* canvas sits under the dots (but above grid background) */
+#pattern-canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
   z-index: 2;
+  touch-action: none;
 }
-/* ensure touch reaches canvases */
-.pattern, #pattern-canvas, .gesture-canvas { touch-action: none; }
+
+/* ==== Gesture canvas (responsive) ==== */
+.gesture-canvas {
+  width: 100%; height: 100%;
+  background: #fafafa;
+  border: 1px solid #ddd; border-radius: 12px;
+  display: block; touch-action: none; z-index: 2;
+}
