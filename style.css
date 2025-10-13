@@ -41,7 +41,7 @@ button.secondary { background: #eef4ff; color: #1a73e8; border-color: #c9daff; }
 
 .progress { color: #444; }
 /* .target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; } */
-.instructions { color: #333; font-size: 14px; margin: 6px auto; }
+/* .instructions { color: #333; font-size: 14px; margin: 6px auto; } */
 .feedback { min-height: 22px; margin-top: 6px; }
 .feedback.ok { color: #1a7f37; }
 .feedback.err { color: #d93025; }
