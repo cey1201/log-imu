@@ -28,7 +28,7 @@ html, body {
 .hidden { display: none; }
 
 .row { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 8px 0; }
-.spacer { flex: 1 1 auto; }
+/* .spacer { flex: 1 1 auto; } */
 .label { font-weight: 600; }
 input[type="text"] {
   padding: 10px 12px; font-size: 16px;
@@ -40,7 +40,7 @@ button.primary { background: #1a73e8; color: white; border: 1px solid #1a73e8; }
 button.secondary { background: #eef4ff; color: #1a73e8; border-color: #c9daff; }
 
 .progress { color: #444; }
-.target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; }
+/* .target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; } */
 .instructions { color: #333; font-size: 14px; margin: 6px auto; }
 .feedback { min-height: 22px; margin-top: 6px; }
 .feedback.ok { color: #1a7f37; }
