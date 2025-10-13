@@ -1,447 +1,284 @@
-/****************************************************************************************
- * Multi-Input Z Task (PIN → PATTERN → GESTURE)
- * - No CSV, no beeps. 
- * - Logs IMU at ~60Hz and sends a batch **per attempt** with `stage` marker:
- *   { type:'imu_log', subject, stage: 'PIN1'|'PAT7'|'GES10', data:[...] }
- * - Keeps your original element IDs & white layout.
- ****************************************************************************************/
-
-/* ------------ DOM references (kept from your original structure) ------------ */
-const head = document.getElementById('head');
-const body = document.getElementById('body');
-
-const stageUser    = document.getElementById('stage-user');
-const stagePIN     = document.getElementById('stage-pin');
-const stagePAT     = document.getElementById('stage-pattern');
-const stageGES     = document.getElementById('stage-gesture');
-const stageDONE    = document.getElementById('stage-done');
-
-const btnPerm      = document.getElementById('btn-permission');
-const btnStart     = document.getElementById('btn-start');
-
-const PINdisplay   = document.getElementById('PIN_display');
-const PINcontainer = document.getElementById('PIN_container');
-const pinButtons   = document.querySelectorAll('.PIN_button');
-const pinProgress  = document.getElementById('pin-progress');
-const pinFeedback  = document.getElementById('pin-feedback');
-
-const patProgress  = document.getElementById('pat-progress');
-const patPathEl    = document.getElementById('pat-path');
-const patFeedback  = document.getElementById('pat-feedback');
-const patGrid      = document.getElementById('pattern-grid');
-const patCanvas    = document.getElementById('pattern-canvas');
-const patReset     = document.getElementById('pat-reset');
-
-const gesProgress  = document.getElementById('ges-progress');
-const gesCanvas    = document.getElementById('gesture-canvas');
-const gesClear     = document.getElementById('ges-clear');
-const gesSave      = document.getElementById('ges-save');
-
-/* ------------ utilities ------------ */
-const useTouchscreen = ('ontouchstart' in document.documentElement);
-const getDownEvent = () => (useTouchscreen ? 'touchstart' : 'mousedown');
-const getMoveEvent = () => (useTouchscreen ? 'touchmove'  : 'mousemove');
-const getUpEvent   = () => (useTouchscreen ? 'touchend'   : 'mouseup');
-
+/***************** tiny helpers *****************/
+const $ = id => document.getElementById(id);
+const useTouch = 'ontouchstart' in document.documentElement;
+const evDown = () => useTouch ? 'touchstart' : 'mousedown';
+const evMove = () => useTouch ? 'touchmove'  : 'mousemove';
+const evUp   = () => useTouch ? 'touchend'   : 'mouseup';
 const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const round = (v,d=4)=>typeof v==='number' ? +v.toFixed(d) : 0;
 
-function getWSUrl(){
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  return `${proto}://${location.host}`;
-}
+/***************** ws *****************/
+function wsUrl(){ return (location.protocol==='https:'?'wss':'ws')+'://'+location.host; }
+let WS=null; (function(){ try{ WS=new WebSocket(wsUrl()); }catch(e){ console.error(e); } })();
 
-/* ------------ global state ------------ */
-let userId = '';
-let WS = null;
+/***************** imu *****************/
+let rot=null, accG=null, imuTimer=null, imuLog=[], logging=false, currentStage='';
 
-let rotationRate, accelerationIncludingGravity;
-let motionListener = false;
-let imuInterval = null;
-let imuLog = [];
-let logging = false;
-let currentStageLabel = ''; // e.g., 'PIN1', 'PAT4', 'GES10'
-
-/* ------------ WebSocket ------------ */
-function startWebSocket(){
-  try {
-    WS = new WebSocket(getWSUrl());
-    WS.onopen  = ()=>console.log('WebSocket connected');
-    WS.onerror = (e)=>console.error('WebSocket error', e);
-    WS.onclose = ()=>console.log('WebSocket closed');
-  } catch (e) { console.error('WS create error', e); }
-}
-startWebSocket();
-
-/* ------------ IMU handlers (same sensors as your previous file) ------------ */
-function handleMotion(event){
-  rotationRate = event.rotationRate;                         /* from your file :contentReference[oaicite:3]{index=3} */
-  accelerationIncludingGravity = event.accelerationIncludingGravity;  /* :contentReference[oaicite:4]{index=4} */
-}
-
-function round(value, decimals = 4) {
-  return typeof value === 'number' ? +value.toFixed(decimals) : 0;     /* :contentReference[oaicite:5]{index=5} */
-}
-
-function startIMU(stageLabel){
-  if (!motionListener){
-    window.addEventListener('devicemotion', handleMotion);
-    motionListener = true;
-  }
-  if (imuInterval) clearInterval(imuInterval);
-  imuLog = [];
-  logging = true;
-  currentStageLabel = stageLabel;
-
-  imuInterval = setInterval(()=>{
-    if (!accelerationIncludingGravity || !rotationRate || !logging) return;
+function onMotion(e){ rot=e.rotationRate; accG=e.accelerationIncludingGravity; }
+function startIMU(stage){
+  currentStage = stage;
+  if (!imuTimer){ window.addEventListener('devicemotion', onMotion, {passive:true}); }
+  imuLog = []; logging = true;
+  clearInterval(imuTimer);
+  imuTimer = setInterval(()=>{
+    if (!logging || !accG || !rot) return;
     imuLog.push({
-      uid: userId,
-      stage: currentStageLabel,         // <- per-row stage tag
-      accX: round(accelerationIncludingGravity.x, 4),
-      accY: round(accelerationIncludingGravity.y, 4),
-      accZ: round(accelerationIncludingGravity.z, 4),
-      gyroX: round(rotationRate.beta, 4),
-      gyroY: round(rotationRate.gamma, 4),
-      gyroZ: round(rotationRate.alpha, 4),
+      uid: userId, stage: currentStage,
+      accX: round(accG.x), accY: round(accG.y), accZ: round(accG.z),
+      gyroX: round(rot.beta), gyroY: round(rot.gamma), gyroZ: round(rot.alpha),
       timestamp: Date.now()
     });
   }, 1000/60);
 }
-
-function sendIMUBatchAndClear() {
-  logging = false;
-  clearInterval(imuInterval);
-  imuInterval = null;
-
-  const payload = JSON.stringify({
-    type: 'imu_log',
-    subject: userId,
-    stage: currentStageLabel,  // <- batch stage marker (e.g., 'PIN3')
-    data: imuLog
-  });
-
-  if (WS && WS.readyState === WebSocket.OPEN) {
-    WS.send(payload);
-    console.log('IMU log sent:', currentStageLabel, imuLog.length);
-  } else if (WS) {
-    WS.addEventListener('open', ()=>WS.send(payload), {once:true});
-  }
-  imuLog = [];
+function sendIMU(){
+  logging=false; clearInterval(imuTimer); imuTimer=null;
+  const payload = JSON.stringify({ type:'imu_log', subject:userId, stage:currentStage, data: imuLog });
+  if (WS && WS.readyState===WebSocket.OPEN) WS.send(payload);
+  else WS?.addEventListener('open', ()=>WS.send(payload), {once:true});
+  imuLog=[];
 }
 
-/* ------------ permission flow (keeps your pattern) ------------ */
-function requestMotionPermission(){
-  if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function'){
-    DeviceMotionEvent.requestPermission()
-      .then((state)=>{
-        if (state === 'granted'){
-          btnStart.disabled = false;
-          body.innerText = 'Motion permission granted.';
-        } else {
-          body.innerText = 'Permission denied.';
-        }
-      })
-      .catch((err)=>{
-        console.error(err);
-        body.innerText = 'Error requesting permission.';
-      });
-  } else {
-    // non-iOS: permission API not required
-    btnStart.disabled = false;
-    body.innerText = 'Ready.';
-  }
-}
-btnPerm.addEventListener('click', requestMotionPermission);
-
-document.getElementById('subjectNo').addEventListener('input', ()=>{
-  userId = document.getElementById('subjectNo').value.trim();
-  btnStart.disabled = userId.length === 0;
+/***************** permission + user id *****************/
+let userId='';
+$('btn-permission').addEventListener('click', ()=>{
+  if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission==='function'){
+    DeviceMotionEvent.requestPermission().then(s=>{
+      $('btn-start').disabled = false;
+      $('body').innerText = (s==='granted'?'Motion ok.':'Motion limited.');
+    }).catch(()=>{$('body').innerText='Permission error';});
+  } else { $('btn-start').disabled=false; $('body').innerText='Ready.'; }
 });
-
-btnStart.addEventListener('click', ()=>{
-  if (!userId) { alert('Enter subject number'); return; }
-  enterPINStage();
+$('subjectNo').addEventListener('input', ()=>{
+  userId = $('subjectNo').value.trim();
+  $('btn-start').disabled = userId.length===0;
 });
+$('btn-start').addEventListener('click', ()=> enterPIN() );
 
-/* ------------ stage routing ------------ */
+/***************** routing *****************/
 function showOnly(id){
-  [stageUser, stagePIN, stagePAT, stageGES, stageDONE].forEach(s=>{
-    s.classList.toggle('hidden', s.id !== id);
+  ['stage-user','stage-pin','stage-pattern','stage-gesture','stage-done'].forEach(s=>{
+    $(s).classList.toggle('hidden', s!==id);
   });
 }
 
-/* ===================== Stage 1: PIN (1-3-7-9) ===================== */
+/***************** Stage 1: PIN (1-3-7-9) *****************/
 const PIN_SEQ = ['1','3','7','9'];
-const PIN_REPS = 10;
-let pinAttempt = 1;
-let pinBuffer = '';
+const PIN_REPS=10;
+let pinAttempt=1, pinBuf=[];
 
-function enterPINStage(){
-  head.innerText = 'PIN Stage';
-  body.innerText = 'Enter 1 → 3 → 7 → 9 (10 times).';
+function enterPIN(){
+  $('head').innerText='PIN';
+  $('body').innerText='1-3-7-9 ×10';
   showOnly('stage-pin');
-  pinAttempt = 1;
-  pinBuffer = '';
-  PINdisplay.innerText = '••••';
-  pinProgress.innerText = `Attempt ${pinAttempt} / ${PIN_REPS}`;
-  pinFeedback.innerText = '';
+  pinAttempt=1; pinBuf=[];
+  $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
+  updatePinDisplay();
+  $('pin-feedback').innerText='';
   startIMU(`PIN${pinAttempt}`);
 }
 
-function handlePINPress(digit){
-  pinBuffer += digit;
-  PINdisplay.innerText = '•'.repeat(Math.min(pinBuffer.length, 4));
-  if (pinBuffer.length === 4){
-    if (pinBuffer === PIN_SEQ.join('')){
-      pinFeedback.innerText = 'Correct';
-      pinFeedback.className = 'feedback ok';
+function updatePinDisplay(){
+  const shown = pinBuf.length? pinBuf.join(' ') : '· · · ·';
+  $('PIN_display').innerText = `Entered: ${shown}`;
+}
 
-      // send batch for this attempt
-      sendIMUBatchAndClear();
+function pressPIN(d){
+  pinBuf.push(d);
+  if (pinBuf.length>4) pinBuf = pinBuf.slice(-4);
+  updatePinDisplay();
 
+  if (pinBuf.length===4){
+    if (pinBuf.join('')===PIN_SEQ.join('')){
+      $('pin-feedback').innerText='OK'; $('pin-feedback').className='feedback ok';
+      sendIMU(); // end this attempt
       pinAttempt++;
-      if (pinAttempt > PIN_REPS){
-        enterPatternStage();
-        return;
-      }
-      pinProgress.innerText = `Attempt ${pinAttempt} / ${PIN_REPS}`;
-      pinBuffer = '';
-      PINdisplay.innerText = '••••';
+      if (pinAttempt>PIN_REPS) return enterPattern();
+      $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
+      pinBuf=[]; updatePinDisplay();
       startIMU(`PIN${pinAttempt}`);
     } else {
-      pinFeedback.innerText = 'Incorrect — try again (1 3 7 9)';
-      pinFeedback.className = 'feedback err';
-      pinBuffer = '';
-      PINdisplay.innerText = '••••';
-      // keep same attempt/stage label until correct
+      $('pin-feedback').innerText='Wrong (1 3 7 9)'; $('pin-feedback').className='feedback err';
+      pinBuf=[]; updatePinDisplay(); // keep same attempt
     }
   }
 }
-
-pinButtons.forEach(btn=>{
-  const handler = (ev)=>{ ev.preventDefault(); handlePINPress(btn.innerText.trim()); };
-  btn.addEventListener('mousedown', handler);
-  btn.addEventListener('touchstart', handler, {passive:false});
+document.querySelectorAll('.PIN_button').forEach(b=>{
+  const h=(e)=>{ e.preventDefault(); pressPIN(b.innerText.trim()); };
+  b.addEventListener('mousedown', h); b.addEventListener('touchstart', h, {passive:false});
 });
 
-/* ===================== Stage 2: Pattern “Z” ===================== */
-const PATTERN_EXPECTED = [1,2,3,5,7,8,9];
-const PATTERN_REPS = 10;
-let patAttempt = 1;
-let patCtx, patRect;
-let patActive = false;
-let patPath = [];
+/***************** Stage 2: Pattern (Z straight lines) *****************/
+const PAT_EXPECT=[1,2,3,5,7,8,9];
+const PAT_REPS=10;
+let patAttempt=1, patPath=[], patCtx=null, patRect=null, patDownActive=false;
 
-function enterPatternStage(){
-  head.innerText = 'Pattern Stage';
-  body.innerText = 'Draw a “Z” on the 3×3 grid (10 times).';
+function enterPattern(){
+  $('head').innerText='Pattern';
+  $('body').innerText='Z ×10';
   showOnly('stage-pattern');
-  patAttempt = 1;
-  patPath = [];
-  patFeedback.innerText = '';
-  patProgress.innerText = `Attempt ${patAttempt} / ${PATTERN_REPS}`;
-  patPathEl.innerText = 'Path: []';
-  patCtx = patCanvas.getContext('2d');
-  resizePatternCanvas();
-  window.addEventListener('resize', resizePatternCanvas);
-  bindPatternEvents();
+  patAttempt=1; patPath=[]; $('pat-feedback').innerText='';
+  $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
+  $('pat-path').innerText='Path: []';
+  patCtx = $('pattern-canvas').getContext('2d');
+  resizePat(); window.addEventListener('resize', resizePat);
+  bindPatEvents();
   startIMU(`PAT${patAttempt}`);
 }
 
-function resizePatternCanvas(){
-  const grid = patGrid;
-  patCanvas.width = grid.clientWidth;
-  patCanvas.height = grid.clientHeight;
+function resizePat(){
+  const grid=$('pattern-grid');
+  const c=$('pattern-canvas');
+  c.width = grid.clientWidth; c.height = grid.clientHeight;
   patRect = grid.getBoundingClientRect();
-  clearPatternCanvas();
+  clearPat();
 }
-function clearPatternCanvas(){
-  patCtx.clearRect(0,0,patCanvas.width, patCanvas.height);
-  patCtx.lineWidth = 6;
-  patCtx.lineCap = 'round';
-  patCtx.strokeStyle = '#1a73e8';
+function clearPat(){
+  patCtx.clearRect(0,0,$('pattern-canvas').width,$('pattern-canvas').height);
+  patCtx.lineWidth=6; patCtx.lineCap='round'; patCtx.strokeStyle='#1a73e8';
 }
 
-function bindPatternEvents(){
-  patGrid.addEventListener('mousedown', patDown);
-  patGrid.addEventListener('mousemove', patMove);
-  window.addEventListener('mouseup', patUp);
-  patGrid.addEventListener('touchstart', patDown, {passive:false});
-  patGrid.addEventListener('touchmove', patMove, {passive:false});
-  patGrid.addEventListener('touchend', patUp);
-  patReset.addEventListener('click', ()=>{
-    patPath = [];
-    patPathEl.innerText = 'Path: []';
-    clearPatternCanvas();
-  });
+function nodeCenter(idx){
+  const c=$('pattern-canvas');
+  const col=(idx-1)%3, row=Math.floor((idx-1)/3);
+  const cw=c.width/3, ch=c.height/3;
+  return { x: col*cw + cw/2, y: row*ch + ch/2 };
 }
-
 function nearestIdx(x,y){
-  const cw = patCanvas.width/3, ch = patCanvas.height/3;
-  const c = clamp(Math.floor(x/cw),0,2), r = clamp(Math.floor(y/ch),0,2);
-  return r*3 + c + 1;
+  const c=$('pattern-canvas'); const cw=c.width/3, ch=c.height/3;
+  const col=clamp(Math.floor(x/cw),0,2), row=clamp(Math.floor(y/ch),0,2);
+  return row*3+col+1;
 }
 function midpoint(a,b){
-  const map = {
-    '1-3':2,'3-1':2, '4-6':5,'6-4':5, '7-9':8,'9-7':8,
-    '1-7':4,'7-1':4, '2-8':5,'8-2':5, '3-9':6,'9-3':6,
-    '1-9':5,'9-1':5, '3-7':5,'7-3':5
+  const map={
+    '1-3':2,'3-1':2,'4-6':5,'6-4':5,'7-9':8,'9-7':8,
+    '1-7':4,'7-1':4,'2-8':5,'8-2':5,'3-9':6,'9-3':6,
+    '1-9':5,'9-1':5,'3-7':5,'7-3':5
   };
-  return map[`${a}-${b}`] || null;
+  return map[`${a}-${b}`]||null;
 }
 
 function patDown(ev){
-  ev.preventDefault();
-  clearPatternCanvas();
-  patActive = true;
-  patPath = [];
-  const t = ev.touches ? ev.touches[0] : ev;
-  const x = clamp(t.clientX - patRect.left, 0, patCanvas.width);
-  const y = clamp(t.clientY - patRect.top, 0, patCanvas.height);
-  patCtx.beginPath(); patCtx.moveTo(x,y);
-  const idx = nearestIdx(x,y);
-  if (!patPath.includes(idx)) patPath.push(idx);
-  patPathEl.innerText = `Path: [${patPath.join(',')}]`;
+  ev.preventDefault(); patDownActive=true; patPath=[];
+  clearPat();
+  const t=ev.touches?ev.touches[0]:ev;
+  const x=clamp(t.clientX-patRect.left,0,$('pattern-canvas').width);
+  const y=clamp(t.clientY-patRect.top,0,$('pattern-canvas').height);
+  const idx=nearestIdx(x,y);
+  patPath.push(idx);
+  $('pat-path').innerText=`Path: [${patPath.join(',')}]`;
 }
 function patMove(ev){
-  if (!patActive) return;
+  if (!patDownActive) return;
   ev.preventDefault();
-  const t = ev.touches ? ev.touches[0] : ev;
-  const x = clamp(t.clientX - patRect.left, 0, patCanvas.width);
-  const y = clamp(t.clientY - patRect.top, 0, patCanvas.height);
-  patCtx.lineTo(x,y); patCtx.stroke();
+  const t=ev.touches?ev.touches[0]:ev;
+  const x=clamp(t.clientX-patRect.left,0,$('pattern-canvas').width);
+  const y=clamp(t.clientY-patRect.top,0,$('pattern-canvas').height);
+  const idx=nearestIdx(x,y);
+  const last=patPath[patPath.length-1];
+  if (idx!==last && !patPath.includes(idx)){
+    // auto include midpoint if needed
+    const mid=midpoint(last,idx);
+    const seq = mid && !patPath.includes(mid) ? [mid, idx] : [idx];
 
-  const idx = nearestIdx(x,y);
-  if (!patPath.includes(idx)){
-    const prev = patPath[patPath.length-1];
-    const mid = midpoint(prev, idx);
-    if (mid && !patPath.includes(mid)) patPath.push(mid);
-    patPath.push(idx);
-    patPathEl.innerText = `Path: [${patPath.join(',')}]`;
+    // draw straight segments center-to-center
+    let from = nodeCenter(last);
+    seq.forEach(k=>{
+      const to = nodeCenter(k);
+      patCtx.beginPath(); patCtx.moveTo(from.x,from.y); patCtx.lineTo(to.x,to.y); patCtx.stroke();
+      patPath.push(k); from = to;
+    });
+    $('pat-path').innerText=`Path: [${patPath.join(',')}]`;
   }
 }
 function patUp(){
-  if (!patActive) return;
-  patActive = false;
-
-  // validate Z
-  const ok = JSON.stringify(patPath) === JSON.stringify(PATTERN_EXPECTED);
-  patFeedback.innerText = ok ? 'Correct' : 'Not a Z — try again';
-  patFeedback.className = 'feedback ' + (ok ? 'ok' : 'err');
+  if (!patDownActive) return; patDownActive=false;
+  const ok = JSON.stringify(patPath)===JSON.stringify(PAT_EXPECT);
+  $('pat-feedback').innerText = ok ? 'OK' : 'Not Z';
+  $('pat-feedback').className = 'feedback ' + (ok?'ok':'err');
 
   if (ok){
-    // send batch for this attempt
-    sendIMUBatchAndClear();
-
+    sendIMU(); // end this attempt
     patAttempt++;
-    if (patAttempt > PATTERN_REPS){
-      enterGestureStage();
-      return;
-    }
-    patProgress.innerText = `Attempt ${patAttempt} / ${PATTERN_REPS}`;
+    if (patAttempt> PAT_REPS) return enterGesture();
+    $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
+    clearPat();
     startIMU(`PAT${patAttempt}`);
   }
 }
+function bindPatEvents(){
+  const g=$('pattern-grid');
+  g.addEventListener('mousedown', patDown);
+  g.addEventListener('mousemove', patMove);
+  window.addEventListener('mouseup', patUp);
+  g.addEventListener('touchstart', patDown, {passive:false});
+  g.addEventListener('touchmove', patMove, {passive:false});
+  g.addEventListener('touchend', patUp);
+  $('pat-reset').addEventListener('click', ()=>{ patPath=[]; $('pat-path').innerText='Path: []'; clearPat(); });
+}
 
-/* ===================== Stage 3: Gesture (free canvas) ===================== */
-const GES_REPS = 10;
-let gesAttempt = 1;
-let gesCtx, gesRect, gesDrawing = false, gesStroke = [];
+/***************** Stage 3: Gesture (free) *****************/
+const GES_REPS=10;
+let gesAttempt=1, gesCtx=null, gesRect=null, drawing=false, stroke=[];
 
-function enterGestureStage(){
-  head.innerText = 'Gesture Stage';
-  body.innerText = 'Draw a “Z” on the canvas (10 times).';
+function enterGesture(){
+  $('head').innerText='Gesture';
+  $('body').innerText='Free Z ×10';
   showOnly('stage-gesture');
-  gesAttempt = 1;
-  gesFeedback.innerText = '';
-  gesProgress.innerText = `Attempt ${gesAttempt} / ${GES_REPS}`;
-  gesCtx = gesCanvas.getContext('2d');
-  resizeGestureCanvas();
-  window.addEventListener('resize', resizeGestureCanvas);
-
-  gesCanvas.addEventListener('mousedown', gesDown);
-  gesCanvas.addEventListener('mousemove', gesMove);
-  window.addEventListener('mouseup', gesUp);
-  gesCanvas.addEventListener('touchstart', gesDown, {passive:false});
-  gesCanvas.addEventListener('touchmove', gesMove, {passive:false});
-  gesCanvas.addEventListener('touchend', gesUp);
-
-  gesClear.addEventListener('click', ()=>{ clearGesture(); gesStroke=[]; });
-  gesSave.addEventListener('click', saveGestureAttempt);
-
+  gesAttempt=1; $('ges-feedback').innerText='';
+  $('ges-progress').innerText=`${gesAttempt} / ${GES_REPS}`;
+  gesCtx = $('gesture-canvas').getContext('2d');
+  resizeGes(); window.addEventListener('resize', resizeGes);
+  bindGesEvents();
   startIMU(`GES${gesAttempt}`);
 }
-
-function resizeGestureCanvas(){
-  const css = getComputedStyle(gesCanvas);
-  gesCanvas.width = Math.round(parseFloat(css.width));
-  gesCanvas.height = Math.round(parseFloat(css.height));
-  gesRect = gesCanvas.getBoundingClientRect();
-  clearGesture();
+function resizeGes(){
+  const c=$('gesture-canvas');
+  const css = getComputedStyle(c);
+  c.width = Math.round(parseFloat(css.width) || 560);
+  c.height= Math.round(parseFloat(css.height) || 360);
+  gesRect = c.getBoundingClientRect();
+  clearGes();
 }
-function clearGesture(){
-  gesCtx.clearRect(0,0,gesCanvas.width, gesCanvas.height);
-  gesCtx.lineWidth = 6; gesCtx.lineCap='round'; gesCtx.strokeStyle='#1a73e8';
-}
+function clearGes(){ const c=$('gesture-canvas'); gesCtx.clearRect(0,0,c.width,c.height);
+  gesCtx.lineWidth=6; gesCtx.lineCap='round'; gesCtx.strokeStyle='#1a73e8'; }
 function gpos(ev){
-  const t = ev.touches ? ev.touches[0] : ev;
-  const x = clamp((t.clientX - gesRect.left),0,gesCanvas.width);
-  const y = clamp((t.clientY - gesRect.top),0,gesCanvas.height);
-  return {x,y};
+  const t=ev.touches?ev.touches[0]:ev;
+  return { x: clamp(t.clientX-gesRect.left,0,$('gesture-canvas').width),
+           y: clamp(t.clientY-gesRect.top ,0,$('gesture-canvas').height) };
 }
-function gesDown(ev){
-  ev.preventDefault();
-  gesDrawing = true;
-  const {x,y} = gpos(ev);
-  gesCtx.beginPath(); gesCtx.moveTo(x,y);
-  gesStroke = [{x,y,t:Date.now()}];
-}
-function gesMove(ev){
-  if (!gesDrawing) return;
-  ev.preventDefault();
-  const {x,y} = gpos(ev);
-  gesCtx.lineTo(x,y); gesCtx.stroke();
-  gesStroke.push({x,y,t:Date.now()});
-}
-function gesUp(){
-  if (!gesDrawing) return;
-  gesDrawing = false;
-}
+function gesDown(ev){ ev.preventDefault(); drawing=true; const {x,y}=gpos(ev);
+  gesCtx.beginPath(); gesCtx.moveTo(x,y); stroke=[{x,y,t:Date.now()}]; }
+function gesMove(ev){ if(!drawing) return; ev.preventDefault(); const {x,y}=gpos(ev);
+  gesCtx.lineTo(x,y); gesCtx.stroke(); stroke.push({x,y,t:Date.now()}); }
+function gesUp(){ if(!drawing) return; drawing=false; }
 
-function saveGestureAttempt(){
-  if (gesStroke.length < 5){
-    gesFeedback.innerText = 'Please draw before saving.';
-    gesFeedback.className = 'feedback warn';
-    return;
-  }
-
-  // send stroke immediately (optional separate record)
-  const strokePayload = JSON.stringify({
-    type: 'gesture_stroke',
-    subject: userId,
-    stage: `GES${gesAttempt}`,
-    data: gesStroke
+function bindGesEvents(){
+  const c=$('gesture-canvas');
+  c.addEventListener('mousedown', gesDown); c.addEventListener('mousemove', gesMove);
+  window.addEventListener('mouseup', gesUp);
+  c.addEventListener('touchstart', gesDown, {passive:false});
+  c.addEventListener('touchmove', gesMove, {passive:false});
+  c.addEventListener('touchend', gesUp);
+  $('ges-clear').addEventListener('click', ()=>{ clearGes(); stroke=[]; });
+  $('ges-save').addEventListener('click', ()=>{
+    if (stroke.length<5){ $('ges-feedback').innerText='Draw first'; $('ges-feedback').className='feedback warn'; return; }
+    const payload = JSON.stringify({ type:'gesture_stroke', subject:userId, stage:`GES${gesAttempt}`, data:stroke });
+    if (WS && WS.readyState===WebSocket.OPEN) WS.send(payload);
+    else WS?.addEventListener('open', ()=>WS.send(payload), {once:true});
+    sendIMU(); // end this attempt
+    gesAttempt++;
+    if (gesAttempt>GES_REPS){
+      $('head').innerText='Done'; $('body').innerText=''; showOnly('stage-done');
+      window.removeEventListener('devicemotion', onMotion);
+      return;
+    }
+    $('ges-progress').innerText=`${gesAttempt} / ${GES_REPS}`;
+    $('ges-feedback').innerText='Saved'; $('ges-feedback').className='feedback ok';
+    clearGes(); stroke=[]; startIMU(`GES${gesAttempt}`);
   });
-  if (WS && WS.readyState === WebSocket.OPEN) WS.send(strokePayload);
-  else if (WS) WS.addEventListener('open', ()=>WS.send(strokePayload), {once:true});
-
-  // send IMU batch for this attempt
-  sendIMUBatchAndClear();
-
-  // advance
-  gesAttempt++;
-  if (gesAttempt > GES_REPS){
-    head.innerText = 'Done';
-    body.innerText = '';
-    showOnly('stage-done');
-    // optional: stop motion
-    window.removeEventListener('devicemotion', handleMotion);
-    motionListener = false;
-    return;
-  }
-  gesProgress.innerText = `Attempt ${gesAttempt} / ${GES_REPS}`;
-  gesFeedback.innerText = 'Saved.';
-  gesFeedback.className = 'feedback ok';
-  clearGesture(); gesStroke = [];
-  startIMU(`GES${gesAttempt}`);
 }
+
+/***************** init header/body text *****************/
+$('head').innerText='User';
+$('body').innerText='Enter ID → Allow Motion → Start';
+showOnly('stage-user');
