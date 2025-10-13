@@ -128,7 +128,7 @@ function resizePat(){
   nodeCenters = [];
   const cw = patCanvas.width/3, ch = patCanvas.height/3;
   for (let r=0;r<3;r++) for (let c=0;c<3;c++) nodeCenters.push({ x:c*cw+cw/2, y:r*ch+ch/2 });
-  nodeRadius = Math.max(18, Math.min(cw, ch) * 0.18);
+  nodeRadius = Math.max(18, Math.min(cw, ch) * 0.15);
   redrawPattern(); // clear
 }
 
