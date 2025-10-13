@@ -1,83 +1,56 @@
-/* keep your base look & keypad (from your current file) */
-div { /* debug off */ }
-img { }
-
 html, body {
-  background-color: white;
-  overscroll-behavior-y: contain;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  height: 100%;
-  width: 100%;
+  background-color: white; overscroll-behavior-y: contain;
+  margin: 0; padding: 0; overflow: hidden; height: 100%; width: 100%;
   position: fixed;
-  touch-action: none;
 }
-
-.screen {
-  background-color: white;
-  color: black;
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  inset: 0;
-  font-size: 18px;
-  text-align: center;
-  font-family: Helvetica, Arial, sans-serif;
-  margin: auto;
+.screen { background: white; color: black; width: 100%; height: 100%;
+  position: absolute; inset: 0; font-size: 18px; text-align: center;
+  font-family: Helvetica, Arial, sans-serif; margin: auto;
 }
+.text { width: 80%; margin: auto; font-size: 16px; margin-top: 5vh; }
+.textLarge { width: 80%; margin: auto; font-size: 28px; margin-top: 3vh; }
 
-.text { background: white; color: black; width: 80%; margin: auto; font-size: 16px; text-align: center; font-family: Helvetica; margin-top: 5vh; }
-.textLarge { background: white; color: black; width: 80%; margin: auto; font-size: 30px; text-align: center; font-family: Helvetica; margin-top: 5vh; }
+#head { margin-top: 3vh; font-weight: bold; line-height: 1.4; font-size: 20px; }
+#body { margin-top: 1vh; }
 
-#head { margin-top: 6vh; font-weight: bold; line-height: 6.5vh; font-size: 20px; }
-#body { margin-top: 7vh; }
-
-.question { text-align: center; margin: auto; }
-#PIN_display { text-align: center; margin-top: 2vh; height: 10vh; }
-
-.PIN_container {
-  display: flex; flex-direction: column; justify-content: flex-end;
-  width: 100%; position: absolute; bottom: 8vh; left: 50%; transform: translateX(-50%);
-  box-sizing: border-box; padding: 0 5vw;
-}
-.PIN_pad { display: grid; grid-template-columns: repeat(3, 20vw); grid-gap: 5vw; justify-content: center; }
-.PIN_button { width: 20vw; height: 20vw; border-radius: 50%; border: none; background-color: #e0e0e0; font-size: 1.5rem; color: #000; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .15s; outline: none; box-shadow: none; }
-.PIN_button:active { background-color: #999; }
-.zero { grid-column: 2; }
-
-#go {
-  background: white; color: black; font-size: 20px; text-align: center; font-family: Helvetica;
-  border: 1px solid gray; width: 46vw; height: 15vw; position: absolute; left: 27vw; bottom: 12vw; line-height: 15vw;
-}
-
-/* new helpers */
+.card { margin: 1vh auto; width: 92%; max-width: 560px; }
 .hidden { display: none; }
-.card { margin: 2vh auto; width: 90%; max-width: 560px; }
 .row { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 8px 0; }
 .primary { background: #1a73e8; color: white; border: 1px solid #1a73e8; border-radius: 10px; padding: 10px 16px; }
 .progress { color: #444; }
-.target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 6px 10px; }
-.instructions { color: #555; width: 90%; margin: 0 auto 8px; }
+.target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; }
+.instructions { color: #333; font-size: 14px; margin: 6px auto; }
+.feedback { min-height: 22px; margin-top: 6px; }
+.feedback.ok { color: #1a7f37; }
+.feedback.err { color: #d93025; }
+.feedback.warn { color: #d28300; }
 
-/* pattern grid */
+.PIN_container { display: flex; flex-direction: column; justify-content: flex-end;
+  width: 100%; position: relative; margin-top: 2vh; padding: 0 5vw;
+}
+.PIN_pad { display: grid; grid-template-columns: repeat(3, 20vw); grid-gap: 5vw; justify-content: center; }
+.PIN_button { width: 20vw; height: 20vw; border-radius: 50%; border: none; background-color: #e0e0e0;
+  font-size: 1.6rem; color: #000; display: flex; align-items: center; justify-content: center; transition: background .15s;
+}
+.PIN_button:active { background-color: #999; }
+.zero { grid-column: 2; }
+
+#PIN_display { margin-top: 1vh; height: auto; }
+
 .pattern {
   position: relative; width: 300px; height: 300px; margin: 12px auto;
   background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
   display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  touch-action: none; /* keep events here */
 }
 .pnode { position: relative; }
 .pnode::after {
   content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
   width: 18px; height: 18px; background: #9db5ff; border-radius: 50%;
 }
-#pattern-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#pattern-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; touch-action: none; }
 
-/* gesture canvas */
 .gesture-canvas {
-  width: 90%; max-width: 560px; height: 360px; background: #fafafa; border: 1px solid #ddd; border-radius: 12px; margin: 0 auto;
+  width: 92%; max-width: 560px; height: 360px; background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
+  margin: 0 auto; display: block; touch-action: none; z-index: 2;
 }
-.feedback { min-height: 22px; margin-top: 6px; }
-.feedback.ok { color: #1a7f37; }
-.feedback.err { color: #d93025; }
-.feedback.warn { color: #d28300; }
