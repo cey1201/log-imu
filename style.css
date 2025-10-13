@@ -39,7 +39,7 @@ button { border-radius: 10px; padding: 10px 16px; border: 1px solid #ccc; backgr
 button.primary { background: #1a73e8; color: white; border: 1px solid #1a73e8; }
 button.secondary { background: #eef4ff; color: #1a73e8; border-color: #c9daff; }
 
-.progress { color: #444; }
+.progress { color: #444; text-align: center;}
 /* .target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; } */
 /* .instructions { color: #333; font-size: 14px; margin: 6px auto; } */
 .feedback { min-height: 22px; margin-top: 6px; }
