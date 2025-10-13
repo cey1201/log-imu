@@ -58,7 +58,7 @@ function showOnly(id){
 }
 $('head').innerText='User'; $('body').innerText='ID → Allow Motion → Start'; showOnly('stage-user');
 
-/**************** PIN (no correctness UI; consistent layout) ****************/
+/**************** PIN (no correctness UI; responsive layout handled by CSS) ****************/
 const PIN_SEQ = ['1','3','7','9'];
 const PIN_REPS=10;
 let pinAttempt=1, pinBuf=[];
@@ -82,14 +82,13 @@ function pressPIN(d){
 
   if (pinBuf.length===4){
     if (pinBuf.join('')===PIN_SEQ.join('')){
-      sendIMU();                    // silently complete attempt
+      sendIMU();
       pinAttempt++;
       if (pinAttempt>PIN_REPS) return enterPattern();
       $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
       pinBuf=[]; updatePinDisplay();
       startIMU(`PIN${pinAttempt}`);
     } else {
-      // wrong -> clear entry; no message
       pinBuf=[]; updatePinDisplay();
     }
   }
@@ -100,7 +99,7 @@ document.querySelectorAll('.PIN_button').forEach(b=>{
   b.addEventListener('touchstart', h, {passive:false});
 });
 
-/**************** Pattern (straight segments + radius node hit + auto midpoints) ****************/
+/**************** Pattern (straight segments + tight radius hit + auto midpoints) ****************/
 const PAT_EXPECT=[1,2,3,5,7,8,9];
 const PAT_REPS=10;
 
@@ -128,37 +127,24 @@ function resizePat(){
   nodeCenters = [];
   const cw = patCanvas.width/3, ch = patCanvas.height/3;
   for (let r=0;r<3;r++) for (let c=0;c<3;c++) nodeCenters.push({ x:c*cw+cw/2, y:r*ch+ch/2 });
-  nodeRadius = Math.max(18, Math.min(cw, ch) * 0.15);
+  // tighter hit radius (adjust 0.16 → 0.14 for even stricter)
+  nodeRadius = Math.max(12, Math.min(cw, ch) * 0.16);
   redrawPattern(); // clear
 }
 
-function redrawPattern(previewPoint){ // render committed + optional preview
-  // full clear
+function redrawPattern(previewPoint){
   patCtx.clearRect(0,0,patCanvas.width, patCanvas.height);
-  // committed segments
-  patCtx.lineWidth = 6;
-  patCtx.lineCap = 'round';
-  patCtx.strokeStyle = '#1a73e8';
-
-  for (let i = 1; i < patPath.length; i++) {
-    const a = nodeCenters[patPath[i-1]-1];
-    const b = nodeCenters[patPath[i]-1];
-    patCtx.beginPath();
-    patCtx.moveTo(a.x, a.y);
-    patCtx.lineTo(b.x, b.y);
-    patCtx.stroke();
+  patCtx.lineWidth=6; patCtx.lineCap='round'; patCtx.strokeStyle='#1a73e8';
+  // committed
+  for (let i=1;i<patPath.length;i++){
+    const a=nodeCenters[patPath[i-1]-1], b=nodeCenters[patPath[i]-1];
+    patCtx.beginPath(); patCtx.moveTo(a.x,a.y); patCtx.lineTo(b.x,b.y); patCtx.stroke();
   }
-
-  // dashed preview from last node to cursor
-  if (previewPoint && patPath.length) {
+  // preview dashed
+  if (previewPoint && patPath.length){
     const a = nodeCenters[patPath[patPath.length-1]-1];
-    patCtx.save();
-    patCtx.setLineDash([10, 8]);
-    patCtx.globalAlpha = 0.7;
-    patCtx.beginPath();
-    patCtx.moveTo(a.x, a.y);
-    patCtx.lineTo(previewPoint.x, previewPoint.y);
-    patCtx.stroke();
+    patCtx.save(); patCtx.setLineDash([10,8]); patCtx.globalAlpha=.7;
+    patCtx.beginPath(); patCtx.moveTo(a.x,a.y); patCtx.lineTo(previewPoint.x, previewPoint.y); patCtx.stroke();
     patCtx.restore();
   }
 }
@@ -169,7 +155,7 @@ function nearestNodeByRadius(px,py){
     const c=nodeCenters[i], d=Math.hypot(px-c.x, py-c.y);
     if (d<=bestD){ bestD=d; bestIdx=i+1; }
   }
-  return bestIdx; // 1..9 or null
+  return bestIdx;
 }
 function midpoint(a,b){
   const map={
@@ -197,12 +183,8 @@ function patMove(ev){
   const x=clamp(t.clientX-patRect.left,0,patCanvas.width);
   const y=clamp(t.clientY-patRect.top ,0,patCanvas.height);
   const hit = nearestNodeByRadius(x,y);
-
-  // preview line from last node to finger
   redrawPattern({x,y});
-
   if (hit && (!patPath.length || patPath[patPath.length-1]!==hit) && !patPath.includes(hit)){
-    // include midpoint if needed
     if (patPath.length){
       const mid = midpoint(patPath[patPath.length-1], hit);
       if (mid && !patPath.includes(mid)) patPath.push(mid);
@@ -215,22 +197,17 @@ function patMove(ev){
 function patUp(){
   if (!patDownActive) return;
   patDownActive=false;
-  redrawPattern(null); // remove preview
-
+  redrawPattern(null);
   const ok = JSON.stringify(patPath)===JSON.stringify(PAT_EXPECT);
   if (ok){
-    sendIMU();                          // finish attempt
+    sendIMU();
     patAttempt++;
     if (patAttempt> PAT_REPS) return enterGesture();
     $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
     startIMU(`PAT${patAttempt}`);
-    patPath=[]; $('pat-path').innerText='Path: []';
-    redrawPattern(null);
-  } else {
-    // not Z: stay on same attempt; no noisy UI
+    patPath=[]; $('pat-path').innerText='Path: []'; redrawPattern(null);
   }
 }
-
 function bindPatEvents(){
   patGrid.addEventListener('mousedown', patDown);
   patGrid.addEventListener('mousemove', patMove);
@@ -241,81 +218,178 @@ function bindPatEvents(){
   $('pat-reset').addEventListener('click', ()=>{ patPath=[]; $('pat-path').innerText='Path: []'; redrawPattern(null); });
 }
 
-/**************** Gesture (raw strokes on canvas) ****************/
+/**************** Gesture (use your proven core: points/strokes/times) ****************/
 const GES_REPS=10;
-let gesAttempt=1, gCtx=null, gRect=null, drawing=false, stroke=[];
+let gesAttempt=1;
+
+// old-project style vars
+let isDown = false;
+let points = [];      // current stroke sample points
+let strokes = [];     // array of strokes (we only allow single stroke here)
+let pointTimes = [];  // per-point ms since stroke start
+let GestureContext = null;
+let CanvasArea = null;
+let strokeStartTime = -1;
 
 function enterGesture(){
   $('head').innerText='Gesture'; $('body').innerText='Draw Z ×10';
   showOnly('stage-gesture');
   gesAttempt=1; $('ges-feedback').innerText='';
   $('ges-progress').innerText=`${gesAttempt} / ${GES_REPS}`;
-  gCtx = $('gesture-canvas').getContext('2d');
-  resizeGesture(); window.addEventListener('resize', resizeGesture);
 
+  // wire canvas
   const c=$('gesture-canvas');
-  c.addEventListener('mousedown', gDown);
-  c.addEventListener('mousemove', gMove);
-  window.addEventListener('mouseup', gUp);
-  c.addEventListener('touchstart', gDown, {passive:false});
-  c.addEventListener('touchmove', gMove, {passive:false});
-  c.addEventListener('touchend', gUp);
+  GestureContext = c.getContext('2d');
+  resizeGesture();
+  window.addEventListener('resize', resizeGesture);
 
-  $('ges-clear').addEventListener('click', ()=>{ clearGesture(); stroke=[]; });
+  // bind core handlers (down/move/up) using your previous project’s logic
+  c.addEventListener('mousedown', gestureDown);
+  c.addEventListener('mousemove', gestureMove);
+  window.addEventListener('mouseup', gestureUp);
+  c.addEventListener('touchstart', gestureDown, {passive:false});
+  c.addEventListener('touchmove', gestureMove, {passive:false});
+  c.addEventListener('touchend', gestureUp);
+
+  $('ges-clear').addEventListener('click', clearGestureAll);
   $('ges-save').addEventListener('click', saveGesture);
 
   startIMU(`GES${gesAttempt}`);
+}
+
+/* — sizing like old getCanvasRect, but safer with DOMRect — */
+function computeCanvasArea(canvas){
+  const r = canvas.getBoundingClientRect();
+  return { x:r.left, y:r.top, width:r.width, height:r.height };
 }
 function resizeGesture(){
   const c=$('gesture-canvas');
   const css = getComputedStyle(c);
   c.width = Math.round(parseFloat(css.width) || 560);
   c.height= Math.round(parseFloat(css.height) || 360);
-  gRect = c.getBoundingClientRect();
-  clearGesture();
+  CanvasArea = computeCanvasArea(c);
+  clearGesture(); // reset drawing style
 }
 function clearGesture(){
   const c=$('gesture-canvas');
-  gCtx.clearRect(0,0,c.width,c.height);
-  gCtx.lineWidth=6; gCtx.lineCap='round'; gCtx.strokeStyle='#1a73e8';
+  GestureContext.clearRect(0,0,c.width,c.height);
+  GestureContext.lineWidth=6;
+  GestureContext.lineCap='round';
+  GestureContext.strokeStyle='#1a73e8';
 }
-function gpos(ev){
-  const t=ev.touches?ev.touches[0]:ev;
-  return {
-    x: clamp(t.clientX - gRect.left, 0, $('gesture-canvas').width),
-    y: clamp(t.clientY - gRect.top , 0, $('gesture-canvas').height)
-  };
-}
-function gDown(ev){
-  ev.preventDefault();
-  // always start from a clean canvas for the new gesture
+function clearGestureAll(){
+  points=[]; strokes=[]; pointTimes=[];
   clearGesture();
-  stroke = [];
-
-  drawing = true;
-  const {x,y} = gpos(ev);
-  gCtx.beginPath();
-  gCtx.moveTo(x,y);
-  stroke.push({x,y,t:Date.now()});
 }
-function gMove(ev){ if(!drawing) return; ev.preventDefault(); const {x,y}=gpos(ev);
-  gCtx.lineTo(x,y); gCtx.stroke(); stroke.push({x,y,t:Date.now()}); }
-function gUp(){ if(!drawing) return; drawing=false; }
 
+/* — coordinate helpers from your previous project — */
+function getX(event){ return useTouch ? event.touches[0].clientX : event.clientX; }
+function getY(event){ return useTouch ? event.touches[0].clientY : event.clientY; }
+
+/* — CORE: down/move/up (ported, simplified to single-stroke and local logging) — */
+function gestureDown(event){
+  // start on a clean canvas every stroke
+  clearGestureAll();
+
+  event.preventDefault();
+  if (useTouch && event.touches.length !== 1) return;
+
+  document.onselectstart = () => false;
+  document.onmousedown   = () => false;
+
+  isDown = true;
+  strokeStartTime = Date.now();
+
+  // first point
+  const x = getX(event) - CanvasArea.x;
+  const y = getY(event) - CanvasArea.y;
+
+  points.length = 1; points[0] = {x,y};
+  pointTimes.length = 1; pointTimes[0] = 0; // t0 = 0
+}
+
+function gestureMove(event){
+  event.preventDefault();
+  if (useTouch && event.touches.length !== 1) return;
+  if (!isDown) return;
+
+  const x = clamp(getX(event) - CanvasArea.x, 0, $('gesture-canvas').width);
+  const y = clamp(getY(event) - CanvasArea.y, 0, $('gesture-canvas').height);
+
+  // append point + time
+  points.push({x,y});
+  pointTimes.push(Date.now() - strokeStartTime);
+
+  // draw segment
+  const n = points.length;
+  if (n >= 2){
+    GestureContext.beginPath();
+    GestureContext.moveTo(points[n-2].x, points[n-2].y);
+    GestureContext.lineTo(points[n-1].x, points[n-1].y);
+    GestureContext.closePath();
+    GestureContext.stroke();
+  }
+}
+
+function gestureUp(event){
+  event.preventDefault();
+  if (useTouch && event.touches && event.touches.length !== 0) return;
+
+  document.onselectstart = () => true;
+  document.onmousedown   = () => true;
+
+  if (!isDown) return;
+  isDown = false;
+
+  // finalize stroke if long enough
+  if (points.length > 10){
+    // single stroke behavior (but keep structure)
+    strokes = [ points.slice() ];
+    // NOTE: we keep times in parallel array (for the only stroke)
+    // Save button will package it; no recognition here (as requested)
+  } else {
+    // too short, just clear back to blank to avoid ghosting
+    clearGestureAll();
+  }
+}
+
+/* — SAVE attempt: send stroke points + times and end IMU batch — */
 function saveGesture(){
-  if (stroke.length<5){ $('ges-feedback').innerText='Draw first'; return; }
-  const payload = JSON.stringify({ type:'gesture_stroke', subject:userId, stage:`GES${gesAttempt}`, data:stroke });
+  if (!strokes.length || !strokes[0] || strokes[0].length < 5){
+    $('ges-feedback').innerText='Draw first'; return;
+  }
+
+  // pack data [{x,y,t}, …]
+  const packed = strokes[0].map((p,i)=>({ x: Math.round(p.x), y: Math.round(p.y), t: pointTimes[i]||0 }));
+
+  const payload = JSON.stringify({
+    type:'gesture_stroke',
+    subject:userId,
+    stage:`GES${gesAttempt}`,
+    data: packed
+  });
+
   if (WS && WS.readyState===WebSocket.OPEN) WS.send(payload);
   else WS?.addEventListener('open', ()=>WS.send(payload), {once:true});
 
-  sendIMU(); // finish attempt
+  sendIMU(); // finish attempt IMU
+
   gesAttempt++;
   if (gesAttempt>GES_REPS){
     $('head').innerText='Done'; $('body').innerText=''; showOnly('stage-done');
     window.removeEventListener('devicemotion', onMotion);
     return;
   }
+
   $('ges-progress').innerText=`${gesAttempt} / ${GES_REPS}`;
   $('ges-feedback').innerText='Saved';
-  clearGesture(); stroke=[]; startIMU(`GES${gesAttempt}`);
+
+  // reset for next attempt (fresh canvas + state)
+  clearGestureAll();
+  startIMU(`GES${gesAttempt}`);
 }
+
+/**************** init header/body text *****************/
+$('head').innerText='User';
+$('body').innerText='Enter ID → Allow Motion → Start';
+showOnly('stage-user');
