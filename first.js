@@ -133,20 +133,32 @@ function resizePat(){
 }
 
 function redrawPattern(previewPoint){ // render committed + optional preview
+  // full clear
   patCtx.clearRect(0,0,patCanvas.width, patCanvas.height);
-  patCtx.lineWidth=6; patCtx.lineCap='round'; patCtx.strokeStyle='#1a73e8';
-
   // committed segments
-  for (let i=1;i<patPath.length;i++){
-    const a=nodeCenters[patPath[i-1]-1], b=nodeCenters[patPath[i]-1];
-    patCtx.beginPath(); patCtx.moveTo(a.x,a.y); patCtx.lineTo(b.x,b.y); patCtx.stroke();
+  patCtx.lineWidth = 6;
+  patCtx.lineCap = 'round';
+  patCtx.strokeStyle = '#1a73e8';
+
+  for (let i = 1; i < patPath.length; i++) {
+    const a = nodeCenters[patPath[i-1]-1];
+    const b = nodeCenters[patPath[i]-1];
+    patCtx.beginPath();
+    patCtx.moveTo(a.x, a.y);
+    patCtx.lineTo(b.x, b.y);
+    patCtx.stroke();
   }
 
-  // preview (dashed) from last node to finger
-  if (previewPoint && patPath.length){
+  // dashed preview from last node to cursor
+  if (previewPoint && patPath.length) {
     const a = nodeCenters[patPath[patPath.length-1]-1];
-    patCtx.save(); patCtx.setLineDash([10,8]); patCtx.globalAlpha=.7;
-    patCtx.beginPath(); patCtx.moveTo(a.x,a.y); patCtx.lineTo(previewPoint.x, previewPoint.y); patCtx.stroke();
+    patCtx.save();
+    patCtx.setLineDash([10, 8]);
+    patCtx.globalAlpha = 0.7;
+    patCtx.beginPath();
+    patCtx.moveTo(a.x, a.y);
+    patCtx.lineTo(previewPoint.x, previewPoint.y);
+    patCtx.stroke();
     patCtx.restore();
   }
 }
@@ -274,8 +286,18 @@ function gpos(ev){
     y: clamp(t.clientY - gRect.top , 0, $('gesture-canvas').height)
   };
 }
-function gDown(ev){ ev.preventDefault(); drawing=true; const {x,y}=gpos(ev);
-  gCtx.beginPath(); gCtx.moveTo(x,y); stroke=[{x,y,t:Date.now()}]; }
+function gDown(ev){
+  ev.preventDefault();
+  // always start from a clean canvas for the new gesture
+  clearGesture();
+  stroke = [];
+
+  drawing = true;
+  const {x,y} = gpos(ev);
+  gCtx.beginPath();
+  gCtx.moveTo(x,y);
+  stroke.push({x,y,t:Date.now()});
+}
 function gMove(ev){ if(!drawing) return; ev.preventDefault(); const {x,y}=gpos(ev);
   gCtx.lineTo(x,y); gCtx.stroke(); stroke.push({x,y,t:Date.now()}); }
 function gUp(){ if(!drawing) return; drawing=false; }
