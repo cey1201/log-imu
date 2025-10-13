@@ -15,6 +15,7 @@ html, body {
   position: absolute; inset: 0;
   font-size: 18px; text-align: center;
   font-family: Helvetica, Arial, sans-serif;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
   margin: auto;
 }
 .text { width: 80%; margin: auto; font-size: 16px; margin-top: 4vh; }
@@ -39,51 +40,68 @@ html, body {
 /* shared centered square */
 .stage-box {
   width: min(92vw, 360px);
-  aspect-ratio: 1 / 1;
-  margin: 10px auto 16px;
+  aspect-ratio: 1 / 1;        /* perfect square */
+  /* push the box lower for thumbs */
+  margin: clamp(10vh, 20vh, 26vh) auto 16px;
   display: grid;
   place-items: center;
 }
 
-/* PIN in the box */
+/* PIN in the box (square grid cells + circular buttons) */
 .PIN_pad {
-  width: 100%; height: 100%;
+  width: 100%;
+  /* auto height so buttons can size by width via aspect-ratio */
+  height: auto;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: 1fr;
+  /* rows auto-size; buttons themselves keep square shape */
+  grid-auto-rows: auto;
   gap: min(4vw, 18px);
 }
+
 .PIN_button {
-  width: 100%; height: 100%;
-  border-radius: 50%;
-  border: none; background: #e0e0e0;
+  width: 100%;
+  /* this enforces square cells irrespective of grid row height */
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;          /* true circle */
+  border: none;
+  background: #e0e0e0;
   font-size: 1.7rem;
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .PIN_button:active { background: #bdbdbd; }
-.zero { grid-column: 2; }
+.zero { grid-column: 2; }      /* center the 0 */
 
 /* Pattern fills the box 1:1 */
 .pattern {
   position: relative;
-  width: 100%; height: 100%;
-  background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
-  display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
   touch-action: none;
 }
-.pnode { position: relative; }
-.pnode::after {
-  content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  width: 18px; height: 18px; background: #9db5ff; border-radius: 50%;
+#pattern-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 2; touch-action: none;
 }
-#pattern-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; touch-action: none; }
 
 /* Gesture fills the box 1:1 */
 .gesture-canvas {
-  width: 100%; height: 100%;
-  background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
-  display: block; touch-action: none; z-index: 2;
+  width: 100%;
+  height: 100%;
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  display: block;
+  touch-action: none;
+  z-index: 2;
 }
-
 /* ensure touch reaches canvases */
 .pattern, #pattern-canvas, .gesture-canvas { touch-action: none; }
