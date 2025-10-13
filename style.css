@@ -1,13 +1,23 @@
+/* base */
 html, body {
-  background-color: white; overscroll-behavior-y: contain;
-  margin: 0; padding: 0; overflow: hidden; height: 100%; width: 100%;
+  background-color: white;
+  overscroll-behavior-y: contain;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
   position: fixed;
 }
-.screen { background: white; color: black; width: 100%; height: 100%;
-  position: absolute; inset: 0; font-size: 18px; text-align: center;
-  font-family: Helvetica, Arial, sans-serif; margin: auto;
+.screen {
+  background: white; color: black;
+  width: 100%; height: 100%;
+  position: absolute; inset: 0;
+  font-size: 18px; text-align: center;
+  font-family: Helvetica, Arial, sans-serif;
+  margin: auto;
 }
-.text { width: 80%; margin: auto; font-size: 16px; margin-top: 5vh; }
+.text { width: 80%; margin: auto; font-size: 16px; margin-top: 4vh; }
 .textLarge { width: 80%; margin: auto; font-size: 28px; margin-top: 3vh; }
 
 #head { margin-top: 3vh; font-weight: bold; line-height: 1.4; font-size: 20px; }
@@ -15,6 +25,7 @@ html, body {
 
 .card { margin: 1vh auto; width: 92%; max-width: 560px; }
 .hidden { display: none; }
+
 .row { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 8px 0; }
 .primary { background: #1a73e8; color: white; border: 1px solid #1a73e8; border-radius: 10px; padding: 10px 16px; }
 .progress { color: #444; }
@@ -25,23 +36,40 @@ html, body {
 .feedback.err { color: #d93025; }
 .feedback.warn { color: #d28300; }
 
-.PIN_container { display: flex; flex-direction: column; justify-content: flex-end;
-  width: 100%; position: relative; margin-top: 2vh; padding: 0 5vw;
+/* shared centered square */
+.stage-box {
+  width: min(92vw, 360px);
+  aspect-ratio: 1 / 1;
+  margin: 10px auto 16px;
+  display: grid;
+  place-items: center;
 }
-.PIN_pad { display: grid; grid-template-columns: repeat(3, 20vw); grid-gap: 5vw; justify-content: center; }
-.PIN_button { width: 20vw; height: 20vw; border-radius: 50%; border: none; background-color: #e0e0e0;
-  font-size: 1.6rem; color: #000; display: flex; align-items: center; justify-content: center; transition: background .15s;
+
+/* PIN in the box */
+.PIN_pad {
+  width: 100%; height: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: min(4vw, 18px);
 }
-.PIN_button:active { background-color: #999; }
+.PIN_button {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  border: none; background: #e0e0e0;
+  font-size: 1.7rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.PIN_button:active { background: #bdbdbd; }
 .zero { grid-column: 2; }
 
-#PIN_display { margin-top: 1vh; height: auto; }
-
+/* Pattern fills the box 1:1 */
 .pattern {
-  position: relative; width: 300px; height: 300px; margin: 12px auto;
+  position: relative;
+  width: 100%; height: 100%;
   background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
   display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
-  touch-action: none; /* keep events here */
+  touch-action: none;
 }
 .pnode { position: relative; }
 .pnode::after {
@@ -50,7 +78,12 @@ html, body {
 }
 #pattern-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; touch-action: none; }
 
+/* Gesture fills the box 1:1 */
 .gesture-canvas {
-  width: 92%; max-width: 560px; height: 360px; background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
-  margin: 0 auto; display: block; touch-action: none; z-index: 2;
+  width: 100%; height: 100%;
+  background: #fafafa; border: 1px solid #ddd; border-radius: 12px;
+  display: block; touch-action: none; z-index: 2;
 }
+
+/* ensure touch reaches canvases */
+.pattern, #pattern-canvas, .gesture-canvas { touch-action: none; }
