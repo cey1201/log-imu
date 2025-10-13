@@ -1,55 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
-
-  <title>PIN Logger EX</title>
-  <link href="style.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
+  <title>Multi-Input Z Task</title>
+  <link href="style.css" rel="stylesheet" />
 </head>
 
 <body oncontextmenu="return false" ondragstart="return false" onselectstart="return false">
+  <div class="screen" id="screendiv">
+    <!-- Title / Subtitle (kept from your original IDs) -->
+    <div class="textLarge" id="head"></div>
+    <div class="text" id="body"></div>
 
-  <!-- Display Area -->
-  <div class="screen" id = "screendiv">
-
-    <!-- Title -->
-		<div class="textLarge" id="head"></div>
-		<!-- Gesture Meter -->
-
-		<!-- Text -->
-		<div class="text" id="body"></div>
-
-    <div class="question" id="demographics">
-      <br>Enter your subject number:<br><br>
-      <input type="text" id="subjectNo" name="subjectNo"><br><br><br>
-    </div>
-
-    <div class="textLarge" id="PIN_display">
-    </div>
-
-    <div class="PIN_container" id="PIN_container">      
-      <div class="PIN_pad" id="PINpad">
-        <button class="PIN_button">1</button>
-        <button class="PIN_button">2</button>
-        <button class="PIN_button">3</button>
-        <button class="PIN_button">4</button>
-        <button class="PIN_button">5</button>
-        <button class="PIN_button">6</button>
-        <button class="PIN_button">7</button>
-        <button class="PIN_button">8</button>
-        <button class="PIN_button">9</button>
-        <button class="PIN_button zero">0</button>
+    <!-- Stage 0: User ID + permission -->
+    <section id="stage-user" class="card">
+      <div class="question" id="demographics">
+        <br>Enter your subject number:<br><br>
+        <input type="text" id="subjectNo" name="subjectNo" placeholder="sub01" /><br><br>
       </div>
-    </div>
-    
+      <div class="row">
+        <button id="btn-permission" class="primary">Request Motion Permission</button>
+        <button id="btn-start" class="primary" disabled>Start</button>
+      </div>
+    </section>
 
-		<div id="go">Tap to start</div>
+    <!-- Stage 1: PIN (1-3-7-9) -->
+    <section id="stage-pin" class="card hidden">
+      <div class="instructions">
+        Enter the PIN <strong>1 → 3 → 7 → 9</strong>. Repeat <strong>10</strong> times.
+      </div>
+      <div class="row">
+        <div id="pin-progress" class="progress">Attempt 1 / 10</div>
+        <div id="pin-target" class="target">Target: 1 3 7 9</div>
+      </div>
 
+      <div class="textLarge" id="PIN_display">••••</div>
+
+      <div class="PIN_container" id="PIN_container">
+        <div class="PIN_pad" id="PINpad">
+          <button class="PIN_button">1</button>
+          <button class="PIN_button">2</button>
+          <button class="PIN_button">3</button>
+          <button class="PIN_button">4</button>
+          <button class="PIN_button">5</button>
+          <button class="PIN_button">6</button>
+          <button class="PIN_button">7</button>
+          <button class="PIN_button">8</button>
+          <button class="PIN_button">9</button>
+          <button class="PIN_button zero">0</button>
+        </div>
+      </div>
+      <div id="pin-feedback" class="feedback"></div>
+    </section>
+
+    <!-- Stage 2: Pattern (Z on 3×3) -->
+    <section id="stage-pattern" class="card hidden">
+      <div class="instructions">
+        Draw a <strong>“Z”</strong> on the 3×3 grid. Repeat <strong>10</strong> times.<br/>
+        Expected path: <code>1-2-3-5-7-8-9</code>
+      </div>
+      <div class="row">
+        <div id="pat-progress" class="progress">Attempt 1 / 10</div>
+        <div id="pat-path" class="target">Path: []</div>
+      </div>
+      <div id="pattern-grid" class="pattern">
+        <div class="pnode" data-idx="1"></div>
+        <div class="pnode" data-idx="2"></div>
+        <div class="pnode" data-idx="3"></div>
+        <div class="pnode" data-idx="4"></div>
+        <div class="pnode" data-idx="5"></div>
+        <div class="pnode" data-idx="6"></div>
+        <div class="pnode" data-idx="7"></div>
+        <div class="pnode" data-idx="8"></div>
+        <div class="pnode" data-idx="9"></div>
+        <canvas id="pattern-canvas"></canvas>
+      </div>
+      <div class="row">
+        <button id="pat-reset">Reset</button>
+      </div>
+      <div id="pat-feedback" class="feedback"></div>
+    </section>
+
+    <!-- Stage 3: Gesture (free canvas) -->
+    <section id="stage-gesture" class="card hidden">
+      <div class="instructions">
+        Draw a big <strong>“Z”</strong> in the canvas. Repeat <strong>10</strong> times.  
+        (No decision; strokes are logged.)
+      </div>
+      <div class="row">
+        <div id="ges-progress" class="progress">Attempt 1 / 10</div>
+      </div>
+      <canvas id="gesture-canvas" class="gesture-canvas"></canvas>
+      <div class="row">
+        <button id="ges-clear">Clear</button>
+        <button id="ges-save" class="primary">Save Attempt</button>
+      </div>
+      <div id="ges-feedback" class="feedback"></div>
+    </section>
+
+    <!-- Done -->
+    <section id="stage-done" class="card hidden">
+      <div class="instructions">All stages complete. Thank you!</div>
+    </section>
+
+    <div id="go" class="hidden">Tap to start</div>
   </div>
 
-
-
-  <script type="text/javascript" src="first.js"></script>
+  <script src="first.js"></script>
 </body>
 </html>
