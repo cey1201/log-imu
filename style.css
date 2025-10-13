@@ -1,18 +1,62 @@
-/* ==== shared square: smaller & truly responsive ==== */
+/* base */
+html, body {
+  background-color: white;
+  overscroll-behavior-y: contain;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+  position: fixed;
+}
+.screen {
+  background: white; color: black;
+  width: 100%; height: 100%;
+  position: absolute; inset: 0;
+  font-size: 18px; text-align: center;
+  font-family: Helvetica, Arial, sans-serif;
+  margin: auto;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+.text { width: 86%; margin: auto; font-size: 16px; margin-top: 2vh; }
+.textLarge { width: 86%; margin: auto; font-size: 26px; margin-top: 3vh; }
+
+#head { margin-top: 2vh; font-weight: 600; line-height: 1.4; font-size: 20px; }
+#body { margin-top: 1vh; }
+
+.card { margin: 0.5vh auto; width: 92%; max-width: 560px; }
+.hidden { display: none; }
+
+.row { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 8px 0; }
+.spacer { flex: 1 1 auto; }
+.label { font-weight: 600; }
+input[type="text"] {
+  padding: 10px 12px; font-size: 16px;
+  border: 1px solid #d0d0d0; border-radius: 8px; min-width: 180px;
+}
+
+button { border-radius: 10px; padding: 10px 16px; border: 1px solid #ccc; background: #f5f5f5; }
+button.primary { background: #1a73e8; color: white; border: 1px solid #1a73e8; }
+button.secondary { background: #eef4ff; color: #1a73e8; border-color: #c9daff; }
+
+.progress { color: #444; }
+.target { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f5f7fb; border: 1px solid #e0e0ef; border-radius: 8px; padding: 4px 8px; }
+.instructions { color: #333; font-size: 14px; margin: 6px auto; }
+.feedback { min-height: 22px; margin-top: 6px; }
+.feedback.ok { color: #1a7f37; }
+.feedback.err { color: #d93025; }
+.feedback.warn { color: #d28300; }
+
+/* shared square for all stages (responsive & lower for thumb reach) */
 .stage-box {
-  /* width scales with viewport, but capped */
   width: clamp(240px, 80vw, 340px);
-  aspect-ratio: 1 / 1;                  /* perfect square */
-  /* lower for thumb reach */
-  margin: clamp(8vh, 18vh, 24vh) auto 16px;
+  aspect-ratio: 1 / 1;
+  margin: clamp(12vh, 22vh, 28vh) auto 16px;  /* push down for thumbs */
   display: grid;
   place-items: center;
 }
 
-/* add bottom safe-area space (iOS) */
-.screen { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px); }
-
-/* ==== PIN keypad (responsive) ==== */
+/* PIN keypad (responsive circles) */
 .PIN_pad {
   width: 100%;
   height: 100%;
@@ -21,11 +65,10 @@
   grid-auto-rows: 1fr;
   gap: clamp(8px, 3vw, 16px);
 }
-
 .PIN_button {
   width: 100%;
-  aspect-ratio: 1 / 1;     /* square → circle */
-  border-radius: 50%;
+  aspect-ratio: 1 / 1;     /* enforce square cell */
+  border-radius: 50%;       /* true circle */
   border: 0;
   background: #e0e0e0;
   font-size: clamp(18px, 6.5vw, 26px);
@@ -35,11 +78,10 @@
 .PIN_button:active { background: #bdbdbd; }
 .zero { grid-column: 2; }
 
-/* ==== Pattern grid (responsive & visible) ==== */
+/* Pattern grid (visible guides + dots; responsive) */
 .pattern {
   position: relative;
   width: 100%; height: 100%;
-  /* subtle 3×3 guides so the grid is always visible */
   background:
     linear-gradient(#ddd 0 0) 0 33.33% / 100% 1px no-repeat,
     linear-gradient(#ddd 0 0) 0 66.66% / 100% 1px no-repeat,
@@ -53,8 +95,6 @@
   grid-template-rows: repeat(3, 1fr);
   touch-action: none;
 }
-
-/* the dots (above canvas) */
 .pnode { position: relative; z-index: 3; }
 .pnode::after {
   content: "";
@@ -66,8 +106,6 @@
   border-radius: 50%;
   box-shadow: 0 0 0 2px rgba(0,0,0,.06);
 }
-
-/* canvas sits under the dots (but above grid background) */
 #pattern-canvas {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
@@ -75,7 +113,7 @@
   touch-action: none;
 }
 
-/* ==== Gesture canvas (responsive) ==== */
+/* Gesture canvas (responsive) */
 .gesture-canvas {
   width: 100%; height: 100%;
   background: #fafafa;
