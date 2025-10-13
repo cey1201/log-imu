@@ -38,6 +38,62 @@ function sendIMU(){
   imuLog=[];
 }
 
+/**************** STATE MACHINE ****************/
+const useTouchscreen = useTouch;
+let mode = 'user';
+let nextMode = null;
+
+function genericNext () {
+  if (!nextMode) return;
+  mode = nextMode;
+  nextMode = null;
+  display();
+}
+
+function showSection(id) {
+  ['stage-user','stage-pin','stage-pattern','stage-gesture','stage-done']
+    .forEach(s => $(s).classList.toggle('hidden', s !== id));
+}
+
+function display() {
+  const win_w = window.innerWidth;
+  const win_h = window.innerHeight;
+
+  // simple portrait/mobile guard
+  if (!useTouchscreen || (win_w > win_h)) {
+    showSection('stage-user');
+    $('head').innerText = 'Rotate Device';
+    $('body').innerText = 'Use portrait orientation on a mobile device.';
+    return;
+  }
+
+  switch (mode) {
+    case 'user':
+      showSection('stage-user');
+      $('head').innerText = 'User';
+      $('body').innerText = 'ID → Allow Motion → Start';
+      break;
+
+    case 'pin':
+      enterPIN();
+      break;
+
+    case 'pattern':
+      enterPattern();
+      break;
+
+    case 'gesture':
+      enterGesture();
+      break;
+
+    case 'done':
+      showSection('stage-done');
+      $('head').innerText = 'Done';
+      $('body').innerText = '';
+      break;
+  }
+}
+
 /**************** user + permission ****************/
 let userId='';
 $('btn-permission').addEventListener('click', ()=>{
@@ -49,14 +105,10 @@ $('subjectNo').addEventListener('input', ()=>{
   userId = $('subjectNo').value.trim();
   $('btn-start').disabled = userId.length===0;
 });
-$('btn-start').addEventListener('click', ()=> enterPIN() );
-
-function showOnly(id){
-  ['stage-user','stage-pin','stage-pattern','stage-gesture','stage-done'].forEach(s=>{
-    $(s).classList.toggle('hidden', s!==id);
-  });
-}
-$('head').innerText='User'; $('body').innerText='ID → Allow Motion → Start'; showOnly('stage-user');
+$('btn-start').addEventListener('click', ()=>{
+  nextMode = 'pin';
+  genericNext();
+});
 
 /**************** PIN (no correctness UI; responsive layout handled by CSS) ****************/
 const PIN_SEQ = ['1','3','7','9'];
@@ -65,7 +117,7 @@ let pinAttempt=1, pinBuf=[];
 
 function enterPIN(){
   $('head').innerText='PIN'; $('body').innerText='1-3-7-9 ×10';
-  showOnly('stage-pin');
+  showSection('stage-pin');
   pinAttempt=1; pinBuf=[];
   $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
   updatePinDisplay();
@@ -84,7 +136,7 @@ function pressPIN(d){
     if (pinBuf.join('')===PIN_SEQ.join('')){
       sendIMU();
       pinAttempt++;
-      if (pinAttempt>PIN_REPS) return enterPattern();
+      if (pinAttempt>PIN_REPS) { nextMode = 'pattern'; return genericNext(); }
       $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
       pinBuf=[]; updatePinDisplay();
       startIMU(`PIN${pinAttempt}`);
@@ -109,7 +161,7 @@ const patCanvas = $('pattern-canvas'), patGrid = $('pattern-grid');
 
 function enterPattern(){
   $('head').innerText='Pattern'; $('body').innerText='Z ×10';
-  showOnly('stage-pattern');
+  showSection('stage-pattern');
   patAttempt=1; patPath=[]; $('pat-feedback').innerText='';
   $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
   $('pat-path').innerText='Path: []';
@@ -127,7 +179,7 @@ function resizePat(){
   nodeCenters = [];
   const cw = patCanvas.width/3, ch = patCanvas.height/3;
   for (let r=0;r<3;r++) for (let c=0;c<3;c++) nodeCenters.push({ x:c*cw+cw/2, y:r*ch+ch/2 });
-  // tighter hit radius (adjust 0.16 → 0.14 for even stricter)
+  // tighter hit radius (adjust 0.16 → 0.14 for stricter)
   nodeRadius = Math.max(12, Math.min(cw, ch) * 0.16);
   redrawPattern(); // clear
 }
@@ -202,7 +254,7 @@ function patUp(){
   if (ok){
     sendIMU();
     patAttempt++;
-    if (patAttempt> PAT_REPS) return enterGesture();
+    if (patAttempt> PAT_REPS) { nextMode = 'gesture'; return genericNext(); }
     $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
     startIMU(`PAT${patAttempt}`);
     patPath=[]; $('pat-path').innerText='Path: []'; redrawPattern(null);
@@ -233,7 +285,7 @@ let strokeStartTime = -1;
 
 function enterGesture(){
   $('head').innerText='Gesture'; $('body').innerText='Draw Z ×10';
-  showOnly('stage-gesture');
+  showSection('stage-gesture');
   gesAttempt=1; $('ges-feedback').innerText='';
   $('ges-progress').innerText=`${gesAttempt} / ${GES_REPS}`;
 
@@ -243,7 +295,7 @@ function enterGesture(){
   resizeGesture();
   window.addEventListener('resize', resizeGesture);
 
-  // bind core handlers (down/move/up) using your previous project’s logic
+  // bind core handlers (down/move/up)
   c.addEventListener('mousedown', gestureDown);
   c.addEventListener('mousemove', gestureMove);
   window.addEventListener('mouseup', gestureUp);
@@ -257,7 +309,7 @@ function enterGesture(){
   startIMU(`GES${gesAttempt}`);
 }
 
-/* — sizing like old getCanvasRect, but safer with DOMRect — */
+/* sizing helpers */
 function computeCanvasArea(canvas){
   const r = canvas.getBoundingClientRect();
   return { x:r.left, y:r.top, width:r.width, height:r.height };
@@ -282,11 +334,11 @@ function clearGestureAll(){
   clearGesture();
 }
 
-/* — coordinate helpers from your previous project — */
+/* coordinate helpers */
 function getX(event){ return useTouch ? event.touches[0].clientX : event.clientX; }
 function getY(event){ return useTouch ? event.touches[0].clientY : event.clientY; }
 
-/* — CORE: down/move/up (ported, simplified to single-stroke and local logging) — */
+/* core gesture handlers */
 function gestureDown(event){
   // start on a clean canvas every stroke
   clearGestureAll();
@@ -300,12 +352,11 @@ function gestureDown(event){
   isDown = true;
   strokeStartTime = Date.now();
 
-  // first point
   const x = getX(event) - CanvasArea.x;
   const y = getY(event) - CanvasArea.y;
 
   points.length = 1; points[0] = {x,y};
-  pointTimes.length = 1; pointTimes[0] = 0; // t0 = 0
+  pointTimes.length = 1; pointTimes[0] = 0;
 }
 
 function gestureMove(event){
@@ -316,11 +367,9 @@ function gestureMove(event){
   const x = clamp(getX(event) - CanvasArea.x, 0, $('gesture-canvas').width);
   const y = clamp(getY(event) - CanvasArea.y, 0, $('gesture-canvas').height);
 
-  // append point + time
   points.push({x,y});
   pointTimes.push(Date.now() - strokeStartTime);
 
-  // draw segment
   const n = points.length;
   if (n >= 2){
     GestureContext.beginPath();
@@ -341,27 +390,20 @@ function gestureUp(event){
   if (!isDown) return;
   isDown = false;
 
-  // finalize stroke if long enough
   if (points.length > 10){
-    // single stroke behavior (but keep structure)
     strokes = [ points.slice() ];
-    // NOTE: we keep times in parallel array (for the only stroke)
-    // Save button will package it; no recognition here (as requested)
   } else {
-    // too short, just clear back to blank to avoid ghosting
     clearGestureAll();
   }
 }
 
-/* — SAVE attempt: send stroke points + times and end IMU batch — */
+/* save attempt */
 function saveGesture(){
   if (!strokes.length || !strokes[0] || strokes[0].length < 5){
     $('ges-feedback').innerText='Draw first'; return;
   }
 
-  // pack data [{x,y,t}, …]
   const packed = strokes[0].map((p,i)=>({ x: Math.round(p.x), y: Math.round(p.y), t: pointTimes[i]||0 }));
-
   const payload = JSON.stringify({
     type:'gesture_stroke',
     subject:userId,
@@ -376,20 +418,18 @@ function saveGesture(){
 
   gesAttempt++;
   if (gesAttempt>GES_REPS){
-    $('head').innerText='Done'; $('body').innerText=''; showOnly('stage-done');
+    nextMode = 'done';
     window.removeEventListener('devicemotion', onMotion);
-    return;
+    return genericNext();
   }
 
   $('ges-progress').innerText=`${gesAttempt} / ${GES_REPS}`;
   $('ges-feedback').innerText='Saved';
 
-  // reset for next attempt (fresh canvas + state)
   clearGestureAll();
   startIMU(`GES${gesAttempt}`);
 }
 
-/**************** init header/body text *****************/
-$('head').innerText='User';
-$('body').innerText='Enter ID → Allow Motion → Start';
-showOnly('stage-user');
+/**************** boot *****************/
+mode = 'user';
+display();
