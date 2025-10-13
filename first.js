@@ -8,8 +8,25 @@ const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 const round = (v,d=4)=>typeof v==='number' ? +v.toFixed(d) : 0;
 
 /**************** WS ****************/
-function wsUrl(){ return (location.protocol==='https:'?'wss':'ws')+'://'+location.host; }
-let WS=null; try{ WS=new WebSocket(wsUrl()); }catch(e){ console.error(e); }
+// function wsUrl(){ return (location.protocol==='https:'?'wss':'ws')+'://'+location.host; }
+let WS=null; 
+// try{ WS=new WebSocket(wsUrl()); }catch(e){ console.error(e); }
+
+function startWebSocket() {
+  WS = new WebSocket('wss://192.168.0.139:3000');
+
+  WS.onopen = () => {
+    console.log("WebSocket connection established.");
+  };
+
+  WS.onerror = (err) => {
+    console.error("WebSocket error:", err);
+  };
+
+  WS.onclose = () => {
+    console.log("WebSocket connection closed.");
+  };
+}
 
 /**************** IMU ****************/
 let rot=null, accG=null, imuTimer=null, imuLog=[], logging=false, stageLabel='';
@@ -433,3 +450,5 @@ function saveGesture(){
 /**************** boot *****************/
 mode = 'user';
 display();
+startWebSocket();
+
