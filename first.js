@@ -1,476 +1,102 @@
-/******************************************************************************************************************************************************
- * FUNC: FrontEnd
- */
+/****************************************************************************************
+ * Multi-Input Z Task (PIN → PATTERN → GESTURE)
+ * - No CSV, no beeps. 
+ * - Logs IMU at ~60Hz and sends a batch **per attempt** with `stage` marker:
+ *   { type:'imu_log', subject, stage: 'PIN1'|'PAT7'|'GES10', data:[...] }
+ * - Keeps your original element IDs & white layout.
+ ****************************************************************************************/
 
-const scr             = document.getElementById('screen');
-const head            = document.getElementById('head');
-const body            = document.getElementById('body');
-const go              = document.getElementById('go');
+/* ------------ DOM references (kept from your original structure) ------------ */
+const head = document.getElementById('head');
+const body = document.getElementById('body');
 
-const demographics    = document.getElementById('demographics');
+const stageUser    = document.getElementById('stage-user');
+const stagePIN     = document.getElementById('stage-pin');
+const stagePAT     = document.getElementById('stage-pattern');
+const stageGES     = document.getElementById('stage-gesture');
+const stageDONE    = document.getElementById('stage-done');
 
-const PINdisplay      = document.getElementById('PIN_display');
-const PINcontainer    = document.getElementById('PIN_container');
-const buttons         = document.querySelectorAll('.PIN_button');
+const btnPerm      = document.getElementById('btn-permission');
+const btnStart     = document.getElementById('btn-start');
 
+const PINdisplay   = document.getElementById('PIN_display');
+const PINcontainer = document.getElementById('PIN_container');
+const pinButtons   = document.querySelectorAll('.PIN_button');
+const pinProgress  = document.getElementById('pin-progress');
+const pinFeedback  = document.getElementById('pin-feedback');
 
+const patProgress  = document.getElementById('pat-progress');
+const patPathEl    = document.getElementById('pat-path');
+const patFeedback  = document.getElementById('pat-feedback');
+const patGrid      = document.getElementById('pattern-grid');
+const patCanvas    = document.getElementById('pattern-canvas');
+const patReset     = document.getElementById('pat-reset');
+
+const gesProgress  = document.getElementById('ges-progress');
+const gesCanvas    = document.getElementById('gesture-canvas');
+const gesClear     = document.getElementById('ges-clear');
+const gesSave      = document.getElementById('ges-save');
+
+/* ------------ utilities ------------ */
 const useTouchscreen = ('ontouchstart' in document.documentElement);
-const getDownEvent    = function () {if (useTouchscreen) {return 'touchstart';} else {return 'mousedown';}}
-const getMoveEvent    = function () {if (useTouchscreen) {return 'touchmove'; } else {return 'mousemove';}}
-const getUpEvent      = function () {if (useTouchscreen) {return 'touchend';  } else {return 'mouseup';}}
+const getDownEvent = () => (useTouchscreen ? 'touchstart' : 'mousedown');
+const getMoveEvent = () => (useTouchscreen ? 'touchmove'  : 'mousemove');
+const getUpEvent   = () => (useTouchscreen ? 'touchend'   : 'mouseup');
 
-const getX = function (event) {if (useTouchscreen) {return event.touches[0].clientX;} else {return event.clientX;}}
-const getY = function (event) {if (useTouchscreen) {return event.touches[0].clientY;} else {return event.clientY;}}
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
+function getWSUrl(){
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}`;
+}
 
+/* ------------ global state ------------ */
+let userId = '';
+let WS = null;
 
-let subID = "";
-let pin               = '';
-let displayStartTime  = -1;
-let mode              = 'load';
-let nextMode;
-let check_count       = 0;
-let interval          = -1;
-let topPINS;
-let rotationRate;
-let accelerationIncludingGravity;
-let shuffledPINS;
-let pinBlocks = [];
-let currentBlock;
-let blockSize;
-
-let cnt_PINS = 0;
-let status_PINS = "released";
-let btn;
-
-let block_cnt = 0;
-let numberBlock = 5;
-
-let imuInterval = null;
-let imuSocket = null;
-let imuLog = [];
-
-let IMULoggingStatus = false;
+let rotationRate, accelerationIncludingGravity;
 let motionListener = false;
+let imuInterval = null;
+let imuLog = [];
+let logging = false;
+let currentStageLabel = ''; // e.g., 'PIN1', 'PAT4', 'GES10'
 
-// socket to connect to my computer
-function startWebSocket() {
-  imuSocket = new WebSocket('wss://192.168.0.139:3000');
-
-  imuSocket.onopen = () => {
-    console.log("WebSocket connection established.");
-  };
-
-  imuSocket.onerror = (err) => {
-    console.error("WebSocket error:", err);
-  };
-
-  imuSocket.onclose = () => {
-    console.log("WebSocket connection closed.");
-  };
+/* ------------ WebSocket ------------ */
+function startWebSocket(){
+  try {
+    WS = new WebSocket(getWSUrl());
+    WS.onopen  = ()=>console.log('WebSocket connected');
+    WS.onerror = (e)=>console.error('WebSocket error', e);
+    WS.onclose = ()=>console.log('WebSocket closed');
+  } catch (e) { console.error('WS create error', e); }
 }
+startWebSocket();
 
-
-buttons.forEach(button => {
-  button.addEventListener('mousedown', PINdown);
-  button.addEventListener('mouseup', PINup);
-  button.addEventListener('touchstart', PINdown);
-  button.addEventListener('touchend', PINup);
-});
-
-function PINdown(event) {
-  event.preventDefault(); // Prevent default touch behavior
-  btn = event.target;
-  status_PINS = "btn_" + btn.innerText;
-  console.log(status_PINS);
+/* ------------ IMU handlers (same sensors as your previous file) ------------ */
+function handleMotion(event){
+  rotationRate = event.rotationRate;                         /* from your file :contentReference[oaicite:3]{index=3} */
+  accelerationIncludingGravity = event.accelerationIncludingGravity;  /* :contentReference[oaicite:4]{index=4} */
 }
-
-function PINup(event) {
-  event.preventDefault(); // Prevent default touch behavior
-
-  const targetPIN = currentBlock[cnt_PINS];
-  status_PINS = "released";
-
-  const key = event.target.innerText;
-  pin += key;
-  PINdisplay.innerText = '*'.repeat(pin.length);
-
-  if (pin.length === targetPIN.length) {
-    if (pin === targetPIN) {
-      console.log("PIN correct");
-      cnt_PINS += 1;
-    } else {
-      console.log("Incorrect PIN.");
-    }
-
-    if (cnt_PINS >= currentBlock.length) {
-      console.log("PIN entries in block complete!");
-      cnt_PINS = 0;
-      block_cnt += 1;
-      
-      // export via websocket
-      stopIMULogging(); 
-      
-      if (block_cnt >= numberBlock) {        
-        // Optional: End message or transition
-        head.innerText = "All PIN entries complete.";
-        body.innerText = "Thank you for participating.";
-        body.style.fontSize = "16px";
-        PINcontainer.style.display = 'none';
-        PINdisplay.style.display = 'none';
-      } else {
-        nextMode = 'start_PIN';
-        genericNext();  
-      }     
-    } else {
-      nextMode = 'enter_PIN';
-      genericNext();  
-    }
-
-    pin = '';
-    PINdisplay.innerText = '';
-  }
-}
-
-
-
-/******************************************************************************************************************************************************
- * FUNC: BackEnd
- */
-
-function loadCSV() {
-  fetch('top_PINS.csv')
-  .then(res => res.text())
-  .then(csvText => {    
-    // console.log(csvText);
-    topPINS = csvText;
-    topPINS = topPINS.split('\r\n');
-  })
-  .catch(err => console.error(err));
-}
-
-
-function sendData() {
-  const data = {
-    time: new Date().toISOString(),
-    value: Math.random()
-  };
-
-  fetch('/log', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-  .then(res => {
-    if (res.ok) console.log("Data sent!");
-    else console.error("Failed to send");
-  });
-}
-
-    
-function requestMotionPermission() {
-    // Check if DeviceMotionEvent is supported
-    if (window.DeviceMotionEvent) {
-        // Request permission to access motion sensors
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            DeviceMotionEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        // Permission granted, continue to the next step
-                        nextMode = 'init'; // Assuming nextMode and genericNext are defined elsewhere
-                        genericNext(); // Function to proceed to the next step
-                    } else {
-                        // Permission denied, display a message
-                        console.log('Motion sensor permission denied.');
-                        head.innerText = "Permission Denied";
-                        body.innerText = "Thank you for showing interest in this study. If you accidently canceled on permission, clear browser data and reload this page again.";
-                    }
-                })
-                .catch(error => {
-                    // Handle any errors
-                    head.innerText = "System Error";
-                    body.innerText = "Try this page later or on other device";
-                    console.error('Error requesting motion sensor permission:', error);
-                });
-        } else {
-            console.log('Motion sensor supported and permission not supported - proceed!');
-            nextMode = 'init'; // Assuming nextMode and genericNext are defined elsewhere
-            genericNext(); // Function to proceed to the next step
-        }
-    } else {
-        console.log('Device motion not supported.');
-        head.innerText = "Device motion not supported on your phone";
-        body.innerText = "Thank you for showing interest in this study";
-    }
-}
-
-
-const DBfound = function() {
-  check_count ++;
-  console.log("number of trials to load PIN data:" + check_count);
-
-  if (!!topPINS) {
-    mode = nextMode;
-    hideAll();
-    display();
-  } else if ( check_count <= 10 ) { 
-    if ( !topPINS ) {
-      loadCSV();
-    }    
-
-    setTimeout(DBfound, interval);
-
-  } else {
-    console.log("Error occured while reading PIN data!");
-    head.innerText = "System error, check WIFI connection.."
-  }
-} 
-
-
-function handleMotion(event) {
-    // // Extract acceleration data from the event
-    // var acceleration = event.acceleration;
-    // Extract rotation rate data from the event
-    rotationRate = event.rotationRate;
-
-    // Extract acceleration including gravity data from the event
-    accelerationIncludingGravity = event.accelerationIncludingGravity;
-}
-
-
-/******************************************************************************************************************************************************
- * FUNC: App Architecture
- */
-function hideAll() {
-    PINcontainer.style.display      = 'none';
-    PINdisplay.style.display        = 'none';
-    body.style.display              = 'none';
-    head.style.display              = 'none';
-    go.style.display                = 'none';
-}
-
-
-const genericNext = function () {
-
-  if (nextMode == 'enter_PIN') {
-
-    if (mode == 'start_PIN' ) {
-      playBeepStart();  
-      mode = nextMode;
-      // Wait 200ms after beep starts before switching screen
-      setTimeout(() => {
-        hideAll();
-        display();
-      }, 200);
-    } else {
-      mode = nextMode;
-      hideAll();
-      display();
-    }    
-  } else if (nextMode == 'start_PIN' && block_cnt > 0) {
-    mode = nextMode;
-
-    if (block_cnt > 0) {
-      playBeepEnd();
-  
-      // Wait 200ms after beep starts before switching screen
-      setTimeout(() => {
-        hideAll();
-        display();
-      }, 200);  
-    } else {
-      hideAll();
-      display();
-    }
-    
-  } else {
-    mode = nextMode;
-    body.removeEventListener(getUpEvent(), genericNext);
-    hideAll();
-    display();
-  }
-    
-}
-
-
-const display = function() {
-
-  displayStartTime = new Date().getTime();
-
-  switch (mode) {
-
-    case 'load':
-      console.log("Read Top 100 PIn data from local computer");
-      head.style.display         = 'block';
-      body.style.display         = 'block';
-      head.innerText = "Loading . . .";
-      nextMode = 'permission';
-
-      check_count = 0;
-      interval = 1000;
-      setTimeout(DBfound, interval);
-
-      break; 
-
-
-    case 'permission':
-      console.log("Mode - Permission Motion Control");
-      head.style.display         = 'block';
-      body.style.display         = 'block';
-      go.style.display           = 'block';
-
-      head.innerText = "Please allow the device motion control on your device!";
-      body.innerText = "";
-      go.innerHTML   = "Proceed";
-
-      
-      go.addEventListener(getUpEvent(), requestMotionPermission);
-
-      break;
-
-    case 'init':
-      if (DeviceMotionEvent.permissionState == 'denied') {
-          console.log('Device motion denial.');
-          go.removeEventListener(getUpEvent(), requestMotionPermission);
-          head.innerText = "Device motion control " + DeviceMotionEvent.permissionState;
-          body.innerText = "Try this study on alternative devices..";
-      } else {
-          // if running device motion, turn this off
-          window.removeEventListener('devicemotion', handleMotion);
-          
-          console.log('Enter subject information');  
-          head.style.display         = 'block';
-          body.style.display         = 'block';
-          go.style.display           = 'block';
-
-          head.innerText = "Enter Subject ID";
-          body.innerText = "";
-          demographics.style.display = 'block';
-              
-          // set to 300 PINs for real study
-          shuffledPINS = topPINS.splice(0, 300);
-          shuffledPINS = shuffleArray(shuffledPINS, 1);
-
-          blockSize = shuffledPINS.length / 5;
-          // n/5 pins per block
-          for (let i = 0; i < 5; i++) {
-            const block = shuffledPINS.slice(i * blockSize, (i + 1) * blockSize);
-            pinBlocks.push(block);
-          }
-
-        
-
-          nextMode = 'start_PIN'; 
-          go.removeEventListener(getUpEvent(), requestMotionPermission);
-          go.addEventListener(getUpEvent(), genericNext);
-          go.innerText="Next";  
-      }
-                
-      break;            
-
-    case 'start_PIN':
-      
-      console.log("PIN entry intro/start");
-      
-      // Turn this events off in this stage 
-      if (motionListener) {
-        window.removeEventListener('devicemotion', handleMotion);     
-        motionListener = false;
-      }    
-      
-      head.style.display         = 'block';
-      body.style.display         = 'block';
-      go.style.display           = 'block';
-
-      demographics.style.display = 'none';
-      // save subject number
-      subID = document.getElementById("subjectNo").value + "_bk" + block_cnt;
-
-      head.innerText = "PIN Entry Session ( " + (block_cnt+1) + "/" + numberBlock + " )";
-      if (block_cnt == 0) {         
-        body.innerText = "You will now proceed to repeatedly enter 4-digit PIN displayed on the screen. \n\n For experimenter -- start/sync the video";  
-        body.style.fontSize = "16px";
-      } else {        
-        body.innerText = "In this stage, you can take up to 1 minute break to proceed. \n\n For experimenter -- start/sync the video";
-        body.style.fontSize = "16px";
-      } 
-      nextMode = 'enter_PIN';
-      go.addEventListener(getUpEvent(), genericNext);
-      go.innerText="Tap to begin";
-
-      break;
-
-    case 'enter_PIN':
-
-      if (!motionListener) {
-        window.addEventListener('devicemotion', handleMotion);   
-        motionListener = true;
-      }    
-      if (!IMULoggingStatus) {
-        startIMULogging();
-      }
-      
-      
-      console.log("start sessions");
-      head.style.display         = 'block';
-      body.style.display         = 'block';
-
-      currentBlock = pinBlocks[block_cnt];
-      head.innerText = "Enter the give PIN ( " + (cnt_PINS+1) + "/" + blockSize + " )"; 
-      body.innerText = currentBlock[cnt_PINS];
-      body.style.fontSize = "30px";
-
-      PINdisplay.style.display = 'block';
-      PINdisplay.style.fontSize = "35px";
-      PINcontainer.style.display = 'block';
-
-
-      break;
-
-  }
-};
-
-
-/******************************************************************************************************************************************************
- * FUNC: Implementation / logger
- */
 
 function round(value, decimals = 4) {
-  return typeof value === 'number' ? +value.toFixed(decimals) : 0;
+  return typeof value === 'number' ? +value.toFixed(decimals) : 0;     /* :contentReference[oaicite:5]{index=5} */
 }
 
-function shuffleArray(array, rep) {
-    const arr = [];
-    for (var i = 0; i < array.length; i++) {
-        for (var j = 0; j < rep; j++) {
-            arr.push(array[i]);
-        }
-    }
-
-    // Fisher-Yates shuffle algorithm
-    for (var i = arr.length - 1; i > 0; i--) {
-        var j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];        
-    }
-    return arr;
-}
-
-
-function startIMULogging() {
-  IMULoggingStatus = true;
-  
+function startIMU(stageLabel){
+  if (!motionListener){
+    window.addEventListener('devicemotion', handleMotion);
+    motionListener = true;
+  }
   if (imuInterval) clearInterval(imuInterval);
-
   imuLog = [];
+  logging = true;
+  currentStageLabel = stageLabel;
 
-  imuInterval = setInterval(() => {
-    if (!accelerationIncludingGravity || !rotationRate) return;
-
-    const logEntry = {
-      subject: subID,
-      block: block_cnt,
-      matchTarget: shuffledPINS[cnt_PINS],
-      status: status_PINS,
+  imuInterval = setInterval(()=>{
+    if (!accelerationIncludingGravity || !rotationRate || !logging) return;
+    imuLog.push({
+      uid: userId,
+      stage: currentStageLabel,         // <- per-row stage tag
       accX: round(accelerationIncludingGravity.x, 4),
       accY: round(accelerationIncludingGravity.y, 4),
       accZ: round(accelerationIncludingGravity.z, 4),
@@ -478,76 +104,344 @@ function startIMULogging() {
       gyroY: round(rotationRate.gamma, 4),
       gyroZ: round(rotationRate.alpha, 4),
       timestamp: Date.now()
-    };
-
-    // console.log(logEntry);
-    imuLog.push(logEntry);
-
-  }, 1000 / 60); // ~60Hz
+    });
+  }, 1000/60);
 }
 
-function stopIMULogging() {
-  IMULoggingStatus = false;
-  
+function sendIMUBatchAndClear() {
+  logging = false;
   clearInterval(imuInterval);
   imuInterval = null;
 
   const payload = JSON.stringify({
-    type: "imu_log",
-    subject: subID,
+    type: 'imu_log',
+    subject: userId,
+    stage: currentStageLabel,  // <- batch stage marker (e.g., 'PIN3')
     data: imuLog
   });
 
-  if (imuSocket && imuSocket.readyState === WebSocket.OPEN) {
-    imuSocket.send(payload);
-    console.log("IMU log sent to server via WebSocket.");
+  if (WS && WS.readyState === WebSocket.OPEN) {
+    WS.send(payload);
+    console.log('IMU log sent:', currentStageLabel, imuLog.length);
+  } else if (WS) {
+    WS.addEventListener('open', ()=>WS.send(payload), {once:true});
+  }
+  imuLog = [];
+}
+
+/* ------------ permission flow (keeps your pattern) ------------ */
+function requestMotionPermission(){
+  if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function'){
+    DeviceMotionEvent.requestPermission()
+      .then((state)=>{
+        if (state === 'granted'){
+          btnStart.disabled = false;
+          body.innerText = 'Motion permission granted.';
+        } else {
+          body.innerText = 'Permission denied.';
+        }
+      })
+      .catch((err)=>{
+        console.error(err);
+        body.innerText = 'Error requesting permission.';
+      });
   } else {
-    imuSocket.addEventListener('open', () => {
-      imuSocket.send(payload);
-      console.log("IMU log sent after WebSocket opened.");
-    });
+    // non-iOS: permission API not required
+    btnStart.disabled = false;
+    body.innerText = 'Ready.';
+  }
+}
+btnPerm.addEventListener('click', requestMotionPermission);
+
+document.getElementById('subjectNo').addEventListener('input', ()=>{
+  userId = document.getElementById('subjectNo').value.trim();
+  btnStart.disabled = userId.length === 0;
+});
+
+btnStart.addEventListener('click', ()=>{
+  if (!userId) { alert('Enter subject number'); return; }
+  enterPINStage();
+});
+
+/* ------------ stage routing ------------ */
+function showOnly(id){
+  [stageUser, stagePIN, stagePAT, stageGES, stageDONE].forEach(s=>{
+    s.classList.toggle('hidden', s.id !== id);
+  });
+}
+
+/* ===================== Stage 1: PIN (1-3-7-9) ===================== */
+const PIN_SEQ = ['1','3','7','9'];
+const PIN_REPS = 10;
+let pinAttempt = 1;
+let pinBuffer = '';
+
+function enterPINStage(){
+  head.innerText = 'PIN Stage';
+  body.innerText = 'Enter 1 → 3 → 7 → 9 (10 times).';
+  showOnly('stage-pin');
+  pinAttempt = 1;
+  pinBuffer = '';
+  PINdisplay.innerText = '••••';
+  pinProgress.innerText = `Attempt ${pinAttempt} / ${PIN_REPS}`;
+  pinFeedback.innerText = '';
+  startIMU(`PIN${pinAttempt}`);
+}
+
+function handlePINPress(digit){
+  pinBuffer += digit;
+  PINdisplay.innerText = '•'.repeat(Math.min(pinBuffer.length, 4));
+  if (pinBuffer.length === 4){
+    if (pinBuffer === PIN_SEQ.join('')){
+      pinFeedback.innerText = 'Correct';
+      pinFeedback.className = 'feedback ok';
+
+      // send batch for this attempt
+      sendIMUBatchAndClear();
+
+      pinAttempt++;
+      if (pinAttempt > PIN_REPS){
+        enterPatternStage();
+        return;
+      }
+      pinProgress.innerText = `Attempt ${pinAttempt} / ${PIN_REPS}`;
+      pinBuffer = '';
+      PINdisplay.innerText = '••••';
+      startIMU(`PIN${pinAttempt}`);
+    } else {
+      pinFeedback.innerText = 'Incorrect — try again (1 3 7 9)';
+      pinFeedback.className = 'feedback err';
+      pinBuffer = '';
+      PINdisplay.innerText = '••••';
+      // keep same attempt/stage label until correct
+    }
   }
 }
 
-function playBeepStart() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = ctx.createOscillator();
-  const gainNode = ctx.createGain();
+pinButtons.forEach(btn=>{
+  const handler = (ev)=>{ ev.preventDefault(); handlePINPress(btn.innerText.trim()); };
+  btn.addEventListener('mousedown', handler);
+  btn.addEventListener('touchstart', handler, {passive:false});
+});
 
-  oscillator.type = 'sine'; // smooth tone
-  oscillator.frequency.setValueAtTime(600, ctx.currentTime);         // start low
-  oscillator.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.2); // sweep up
+/* ===================== Stage 2: Pattern “Z” ===================== */
+const PATTERN_EXPECTED = [1,2,3,5,7,8,9];
+const PATTERN_REPS = 10;
+let patAttempt = 1;
+let patCtx, patRect;
+let patActive = false;
+let patPath = [];
 
-  gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-  oscillator.connect(gainNode);
-  gainNode.connect(ctx.destination);
-
-  oscillator.start();
-  oscillator.stop(ctx.currentTime + 0.2); // 200ms
-
-  console.log("Start beep at:", performance.now());
+function enterPatternStage(){
+  head.innerText = 'Pattern Stage';
+  body.innerText = 'Draw a “Z” on the 3×3 grid (10 times).';
+  showOnly('stage-pattern');
+  patAttempt = 1;
+  patPath = [];
+  patFeedback.innerText = '';
+  patProgress.innerText = `Attempt ${patAttempt} / ${PATTERN_REPS}`;
+  patPathEl.innerText = 'Path: []';
+  patCtx = patCanvas.getContext('2d');
+  resizePatternCanvas();
+  window.addEventListener('resize', resizePatternCanvas);
+  bindPatternEvents();
+  startIMU(`PAT${patAttempt}`);
 }
 
-function playBeepEnd() {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = ctx.createOscillator();
-  const gainNode = ctx.createGain();
-  
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(1200, ctx.currentTime);         // start high
-  oscillator.frequency.linearRampToValueAtTime(600, ctx.currentTime + 0.3); // sweep down
-
-  gainNode.gain.setValueAtTime(0.3, ctx.currentTime);
-  oscillator.connect(gainNode);
-  gainNode.connect(ctx.destination);
-
-  oscillator.start();
-  oscillator.stop(ctx.currentTime + 0.3); // 300ms for emphasis
-
-  console.log("End beep at:", performance.now());
+function resizePatternCanvas(){
+  const grid = patGrid;
+  patCanvas.width = grid.clientWidth;
+  patCanvas.height = grid.clientHeight;
+  patRect = grid.getBoundingClientRect();
+  clearPatternCanvas();
+}
+function clearPatternCanvas(){
+  patCtx.clearRect(0,0,patCanvas.width, patCanvas.height);
+  patCtx.lineWidth = 6;
+  patCtx.lineCap = 'round';
+  patCtx.strokeStyle = '#1a73e8';
 }
 
+function bindPatternEvents(){
+  patGrid.addEventListener('mousedown', patDown);
+  patGrid.addEventListener('mousemove', patMove);
+  window.addEventListener('mouseup', patUp);
+  patGrid.addEventListener('touchstart', patDown, {passive:false});
+  patGrid.addEventListener('touchmove', patMove, {passive:false});
+  patGrid.addEventListener('touchend', patUp);
+  patReset.addEventListener('click', ()=>{
+    patPath = [];
+    patPathEl.innerText = 'Path: []';
+    clearPatternCanvas();
+  });
+}
 
-hideAll();
-display();
-startWebSocket(); 
+function nearestIdx(x,y){
+  const cw = patCanvas.width/3, ch = patCanvas.height/3;
+  const c = clamp(Math.floor(x/cw),0,2), r = clamp(Math.floor(y/ch),0,2);
+  return r*3 + c + 1;
+}
+function midpoint(a,b){
+  const map = {
+    '1-3':2,'3-1':2, '4-6':5,'6-4':5, '7-9':8,'9-7':8,
+    '1-7':4,'7-1':4, '2-8':5,'8-2':5, '3-9':6,'9-3':6,
+    '1-9':5,'9-1':5, '3-7':5,'7-3':5
+  };
+  return map[`${a}-${b}`] || null;
+}
+
+function patDown(ev){
+  ev.preventDefault();
+  clearPatternCanvas();
+  patActive = true;
+  patPath = [];
+  const t = ev.touches ? ev.touches[0] : ev;
+  const x = clamp(t.clientX - patRect.left, 0, patCanvas.width);
+  const y = clamp(t.clientY - patRect.top, 0, patCanvas.height);
+  patCtx.beginPath(); patCtx.moveTo(x,y);
+  const idx = nearestIdx(x,y);
+  if (!patPath.includes(idx)) patPath.push(idx);
+  patPathEl.innerText = `Path: [${patPath.join(',')}]`;
+}
+function patMove(ev){
+  if (!patActive) return;
+  ev.preventDefault();
+  const t = ev.touches ? ev.touches[0] : ev;
+  const x = clamp(t.clientX - patRect.left, 0, patCanvas.width);
+  const y = clamp(t.clientY - patRect.top, 0, patCanvas.height);
+  patCtx.lineTo(x,y); patCtx.stroke();
+
+  const idx = nearestIdx(x,y);
+  if (!patPath.includes(idx)){
+    const prev = patPath[patPath.length-1];
+    const mid = midpoint(prev, idx);
+    if (mid && !patPath.includes(mid)) patPath.push(mid);
+    patPath.push(idx);
+    patPathEl.innerText = `Path: [${patPath.join(',')}]`;
+  }
+}
+function patUp(){
+  if (!patActive) return;
+  patActive = false;
+
+  // validate Z
+  const ok = JSON.stringify(patPath) === JSON.stringify(PATTERN_EXPECTED);
+  patFeedback.innerText = ok ? 'Correct' : 'Not a Z — try again';
+  patFeedback.className = 'feedback ' + (ok ? 'ok' : 'err');
+
+  if (ok){
+    // send batch for this attempt
+    sendIMUBatchAndClear();
+
+    patAttempt++;
+    if (patAttempt > PATTERN_REPS){
+      enterGestureStage();
+      return;
+    }
+    patProgress.innerText = `Attempt ${patAttempt} / ${PATTERN_REPS}`;
+    startIMU(`PAT${patAttempt}`);
+  }
+}
+
+/* ===================== Stage 3: Gesture (free canvas) ===================== */
+const GES_REPS = 10;
+let gesAttempt = 1;
+let gesCtx, gesRect, gesDrawing = false, gesStroke = [];
+
+function enterGestureStage(){
+  head.innerText = 'Gesture Stage';
+  body.innerText = 'Draw a “Z” on the canvas (10 times).';
+  showOnly('stage-gesture');
+  gesAttempt = 1;
+  gesFeedback.innerText = '';
+  gesProgress.innerText = `Attempt ${gesAttempt} / ${GES_REPS}`;
+  gesCtx = gesCanvas.getContext('2d');
+  resizeGestureCanvas();
+  window.addEventListener('resize', resizeGestureCanvas);
+
+  gesCanvas.addEventListener('mousedown', gesDown);
+  gesCanvas.addEventListener('mousemove', gesMove);
+  window.addEventListener('mouseup', gesUp);
+  gesCanvas.addEventListener('touchstart', gesDown, {passive:false});
+  gesCanvas.addEventListener('touchmove', gesMove, {passive:false});
+  gesCanvas.addEventListener('touchend', gesUp);
+
+  gesClear.addEventListener('click', ()=>{ clearGesture(); gesStroke=[]; });
+  gesSave.addEventListener('click', saveGestureAttempt);
+
+  startIMU(`GES${gesAttempt}`);
+}
+
+function resizeGestureCanvas(){
+  const css = getComputedStyle(gesCanvas);
+  gesCanvas.width = Math.round(parseFloat(css.width));
+  gesCanvas.height = Math.round(parseFloat(css.height));
+  gesRect = gesCanvas.getBoundingClientRect();
+  clearGesture();
+}
+function clearGesture(){
+  gesCtx.clearRect(0,0,gesCanvas.width, gesCanvas.height);
+  gesCtx.lineWidth = 6; gesCtx.lineCap='round'; gesCtx.strokeStyle='#1a73e8';
+}
+function gpos(ev){
+  const t = ev.touches ? ev.touches[0] : ev;
+  const x = clamp((t.clientX - gesRect.left),0,gesCanvas.width);
+  const y = clamp((t.clientY - gesRect.top),0,gesCanvas.height);
+  return {x,y};
+}
+function gesDown(ev){
+  ev.preventDefault();
+  gesDrawing = true;
+  const {x,y} = gpos(ev);
+  gesCtx.beginPath(); gesCtx.moveTo(x,y);
+  gesStroke = [{x,y,t:Date.now()}];
+}
+function gesMove(ev){
+  if (!gesDrawing) return;
+  ev.preventDefault();
+  const {x,y} = gpos(ev);
+  gesCtx.lineTo(x,y); gesCtx.stroke();
+  gesStroke.push({x,y,t:Date.now()});
+}
+function gesUp(){
+  if (!gesDrawing) return;
+  gesDrawing = false;
+}
+
+function saveGestureAttempt(){
+  if (gesStroke.length < 5){
+    gesFeedback.innerText = 'Please draw before saving.';
+    gesFeedback.className = 'feedback warn';
+    return;
+  }
+
+  // send stroke immediately (optional separate record)
+  const strokePayload = JSON.stringify({
+    type: 'gesture_stroke',
+    subject: userId,
+    stage: `GES${gesAttempt}`,
+    data: gesStroke
+  });
+  if (WS && WS.readyState === WebSocket.OPEN) WS.send(strokePayload);
+  else if (WS) WS.addEventListener('open', ()=>WS.send(strokePayload), {once:true});
+
+  // send IMU batch for this attempt
+  sendIMUBatchAndClear();
+
+  // advance
+  gesAttempt++;
+  if (gesAttempt > GES_REPS){
+    head.innerText = 'Done';
+    body.innerText = '';
+    showOnly('stage-done');
+    // optional: stop motion
+    window.removeEventListener('devicemotion', handleMotion);
+    motionListener = false;
+    return;
+  }
+  gesProgress.innerText = `Attempt ${gesAttempt} / ${GES_REPS}`;
+  gesFeedback.innerText = 'Saved.';
+  gesFeedback.className = 'feedback ok';
+  clearGesture(); gesStroke = [];
+  startIMU(`GES${gesAttempt}`);
+}
