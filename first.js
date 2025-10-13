@@ -181,7 +181,7 @@ function enterPattern(){
   showSection('stage-pattern');
   patAttempt=1; patPath=[]; $('pat-feedback').innerText='';
   $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
-  $('pat-path').innerText='Path: []';
+  
   patCtx = patCanvas.getContext('2d');
   resizePat(); window.addEventListener('resize', resizePat);
   bindPatEvents();
@@ -242,7 +242,7 @@ function patDown(ev){
   const x=clamp(t.clientX-patRect.left,0,patCanvas.width);
   const y=clamp(t.clientY-patRect.top ,0,patCanvas.height);
   const idx = nearestNodeByRadius(x,y);
-  if (idx){ patPath=[idx]; $('pat-path').innerText=`Path: [${patPath.join(',')}]`; }
+  
   redrawPattern({x,y});
 }
 function patMove(ev){
@@ -259,7 +259,7 @@ function patMove(ev){
       if (mid && !patPath.includes(mid)) patPath.push(mid);
     }
     patPath.push(hit);
-    $('pat-path').innerText=`Path: [${patPath.join(',')}]`;
+    
     redrawPattern({x,y});
   }
 }
@@ -274,7 +274,9 @@ function patUp(){
     if (patAttempt> PAT_REPS) { nextMode = 'gesture'; return genericNext(); }
     $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
     startIMU(`PAT${patAttempt}`);
-    patPath=[]; $('pat-path').innerText='Path: []'; redrawPattern(null);
+    patPath=[]; 
+    
+    redrawPattern(null);
   }
 }
 function bindPatEvents(){
@@ -284,7 +286,7 @@ function bindPatEvents(){
   patGrid.addEventListener('touchstart', patDown, {passive:false});
   patGrid.addEventListener('touchmove', patMove, {passive:false});
   patGrid.addEventListener('touchend', patUp);
-  $('pat-reset').addEventListener('click', ()=>{ patPath=[]; $('pat-path').innerText='Path: []'; redrawPattern(null); });
+  // $('pat-reset').addEventListener('click', ()=>{ patPath=[]; redrawPattern(null); });
 }
 
 /**************** Gesture (use your proven core: points/strokes/times) ****************/
