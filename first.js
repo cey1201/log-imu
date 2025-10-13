@@ -47,6 +47,12 @@ function startIMU(label){
     });
   }, 1000/60);
 }
+
+function cancelIMU(){
+  logging=false; clearInterval(imuTimer); imuTimer=null;
+  imuLog=[]; // drop anything captured for a failed attempt
+}
+
 function sendIMU(){
   logging=false; clearInterval(imuTimer); imuTimer=null;
   const payload = JSON.stringify({ type:'imu_log', subject:userId, stage:stageLabel, data:imuLog });
@@ -138,30 +144,41 @@ function enterPIN(){
   pinAttempt=1; pinBuf=[];
   $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
   updatePinDisplay();
-  startIMU(`PIN${pinAttempt}`);
 }
+
 function updatePinDisplay(){
   const shown = pinBuf.length ? pinBuf.join(' ') : '· · · ·';
   $('PIN_display').innerText = `Entered: ${shown}`;
 }
+
 function pressPIN(d){
+  // start IMU at the first digit of this 4-digit try
+  if (pinBuf.length===0 && !logging){
+    startIMU(`PIN${pinAttempt}`);
+  }
+
   pinBuf.push(d);
   if (pinBuf.length>4) pinBuf = pinBuf.slice(-4);
   updatePinDisplay();
 
   if (pinBuf.length===4){
-    if (pinBuf.join('')===PIN_SEQ.join('')){
-      sendIMU();
+    const success = (pinBuf.join('')===PIN_SEQ.join(''));
+    if (success){
+      sendIMU(); // keep and send only successful attempt
       pinAttempt++;
       if (pinAttempt>PIN_REPS) { nextMode = 'pattern'; return genericNext(); }
       $('pin-progress').innerText=`${pinAttempt} / ${PIN_REPS}`;
       pinBuf=[]; updatePinDisplay();
-      startIMU(`PIN${pinAttempt}`);
+      // wait to start IMU until the *next* first keypress
     } else {
+      // wrong: drop IMU that was captured during this try
+      cancelIMU();
       pinBuf=[]; updatePinDisplay();
+      // still same attempt number; user retries; IMU will start on first keypress again
     }
   }
 }
+
 document.querySelectorAll('.PIN_button').forEach(b=>{
   const h=(e)=>{ e.preventDefault(); pressPIN(b.innerText.trim()); };
   b.addEventListener('mousedown', h);
@@ -185,7 +202,7 @@ function enterPattern(){
   patCtx = patCanvas.getContext('2d');
   resizePat(); window.addEventListener('resize', resizePat);
   bindPatEvents();
-  startIMU(`PAT${patAttempt}`);
+  // startIMU(`PAT${patAttempt}`);
 }
 
 function resizePat(){
@@ -238,6 +255,9 @@ function midpoint(a,b){
 function patDown(ev){
   ev.preventDefault();
   patDownActive=true; patPath=[];
+
+  if (!logging) startIMU(`PAT${patAttempt}`);
+  
   const t=ev.touches?ev.touches[0]:ev;
   const x=clamp(t.clientX-patRect.left,0,patCanvas.width);
   const y=clamp(t.clientY-patRect.top ,0,patCanvas.height);
@@ -263,22 +283,27 @@ function patMove(ev){
     redrawPattern({x,y});
   }
 }
+
 function patUp(){
   if (!patDownActive) return;
   patDownActive=false;
   redrawPattern(null);
   const ok = JSON.stringify(patPath)===JSON.stringify(PAT_EXPECT);
   if (ok){
-    sendIMU();
+    sendIMU(); // keep this successful attempt
     patAttempt++;
     if (patAttempt> PAT_REPS) { nextMode = 'gesture'; return genericNext(); }
     $('pat-progress').innerText=`${patAttempt} / ${PAT_REPS}`;
-    startIMU(`PAT${patAttempt}`);
     patPath=[]; 
-    
     redrawPattern(null);
+  } else {
+    // wrong: drop IMU from this try
+    cancelIMU();
+    patPath=[];
   }
 }
+
+
 function bindPatEvents(){
   patGrid.addEventListener('mousedown', patDown);
   patGrid.addEventListener('mousemove', patMove);
@@ -325,7 +350,7 @@ function enterGesture(){
   // $('ges-clear').addEventListener('click', clearGestureAll);
   // $('ges-save').addEventListener('click', saveGesture);
 
-  startIMU(`GES${gesAttempt}`);
+  // startIMU(`GES${gesAttempt}`);
 }
 
 /* sizing helpers */
@@ -365,6 +390,8 @@ function gestureDown(event){
   event.preventDefault();
   if (useTouch && event.touches.length !== 1) return;
 
+  if (!logging) startIMU(`GES${gesAttempt}`);
+  
   document.onselectstart = () => false;
   document.onmousedown   = () => false;
 
@@ -413,6 +440,7 @@ function gestureUp(event){
     strokes = [ points.slice() ];
     saveGesture();
   } else {
+    cancelIMU();
     clearGestureAll();
   }
 }
@@ -447,7 +475,7 @@ function saveGesture(){
   $('ges-feedback').innerText='Saved';
 
   clearGestureAll();
-  startIMU(`GES${gesAttempt}`);
+  // startIMU(`GES${gesAttempt}`);
 }
 
 /**************** boot *****************/
