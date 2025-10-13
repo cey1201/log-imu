@@ -14,12 +14,12 @@
 
     <!-- Stage 0: User -->
     <section id="stage-user" class="card">
-      <div class="question" id="demographics">
-        <b>User ID</b><br/><br/>
-        <input type="text" id="subjectNo" name="subjectNo" placeholder="sub01" /><br/><br/>
+      <div class="row">
+        <label for="subjectNo" class="label">User ID</label>
+        <input type="text" id="subjectNo" name="subjectNo" placeholder="sub01" />
       </div>
       <div class="row">
-        <button id="btn-permission" class="primary">Allow Motion</button>
+        <button id="btn-permission" class="secondary">Allow Motion</button>
         <button id="btn-start" class="primary" disabled>Start</button>
       </div>
     </section>
@@ -29,6 +29,7 @@
       <div class="instructions">Enter: <b>1-3-7-9</b> ×10</div>
       <div class="row">
         <div id="pin-progress" class="progress">1 / 10</div>
+        <div class="spacer"></div>
         <div id="pin-target" class="target">1 3 7 9</div>
       </div>
 
@@ -51,6 +52,7 @@
       <div class="instructions">Pattern: <b>Z</b> ×10</div>
       <div class="row">
         <div id="pat-progress" class="progress">1 / 10</div>
+        <div class="spacer"></div>
         <div id="pat-path" class="target">Path: []</div>
       </div>
 
