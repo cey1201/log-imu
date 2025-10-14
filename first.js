@@ -135,7 +135,7 @@ $('btn-start').addEventListener('click', ()=>{
 
 /**************** PIN (no correctness UI; responsive layout handled by CSS) ****************/
 const PIN_SEQ = ['1','3','7','9'];
-const PIN_REPS=2;
+const PIN_REPS=3;
 let pinAttempt=1, pinBuf=[];
 
 function enterPIN(){
