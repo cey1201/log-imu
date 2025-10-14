@@ -51,7 +51,7 @@ button.secondary { background: #eef4ff; color: #1a73e8; border-color: #c9daff; }
 .stage-box {
   width: clamp(240px, 80vw, 340px);
   aspect-ratio: 1 / 1;
-  margin: clamp(10vh, 18vh, 22vh) auto 16px;
+  margin: clamp(15vh, 23vh, 27vh) auto 16px;
   display: grid;
   place-items: center;
   overflow: visible; /* ensures 0 button not cut off */
