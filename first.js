@@ -214,7 +214,7 @@ function resizePat(){
   const cw = patCanvas.width/3, ch = patCanvas.height/3;
   for (let r=0;r<3;r++) for (let c=0;c<3;c++) nodeCenters.push({ x:c*cw+cw/2, y:r*ch+ch/2 });
   // tighter hit radius (adjust 0.16 → 0.14 for stricter)
-  nodeRadius = Math.max(12, Math.min(cw, ch) * 0.16);
+  nodeRadius = Math.max(15, Math.min(cw, ch) * 0.24);
   redrawPattern(); // clear
 }
 
