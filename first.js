@@ -135,7 +135,7 @@ $('btn-start').addEventListener('click', ()=>{
 
 /**************** PIN (no correctness UI; responsive layout handled by CSS) ****************/
 const PIN_SEQ = ['1','3','7','9'];
-const PIN_REPS=3;
+const PIN_REPS=30;
 let pinAttempt=1, pinBuf=[];
 
 function enterPIN(){
@@ -187,7 +187,7 @@ document.querySelectorAll('.PIN_button').forEach(b=>{
 
 /**************** Pattern (straight segments + tight radius hit + auto midpoints) ****************/
 const PAT_EXPECT=[1,2,3,5,7,8,9];
-const PAT_REPS=3;
+const PAT_REPS=30;
 
 let patAttempt=1, patPath=[], patCtx=null, patRect=null, patDownActive=false;
 let nodeCenters=[], nodeRadius=24; // px; set on resize
@@ -315,7 +315,7 @@ function bindPatEvents(){
 }
 
 /**************** Gesture (use your proven core: points/strokes/times) ****************/
-const GES_REPS=3;
+const GES_REPS=30;
 let gesAttempt=1;
 
 // old-project style vars
