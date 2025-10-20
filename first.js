@@ -451,16 +451,16 @@ function saveGesture(){
     $('ges-feedback').innerText='Draw first'; return;
   }
 
-  const packed = strokes[0].map((p,i)=>({ x: Math.round(p.x), y: Math.round(p.y), t: pointTimes[i]||0 }));
-  const payload = JSON.stringify({
-    type:'gesture_stroke',
-    subject:userId,
-    stage:`GES${gesAttempt}`,
-    data: packed
-  });
+  // const packed = strokes[0].map((p,i)=>({ x: Math.round(p.x), y: Math.round(p.y), t: pointTimes[i]||0 }));
+  // const payload = JSON.stringify({
+  //   type:'gesture_stroke',
+  //   subject:userId,
+  //   stage:`GES${gesAttempt}`,
+  //   data: packed
+  // });
 
-  if (WS && WS.readyState===WebSocket.OPEN) WS.send(payload);
-  else WS?.addEventListener('open', ()=>WS.send(payload), {once:true});
+  // if (WS && WS.readyState===WebSocket.OPEN) WS.send(payload);
+  // else WS?.addEventListener('open', ()=>WS.send(payload), {once:true});
 
   sendIMU(); // finish attempt IMU
 
